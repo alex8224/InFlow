@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { Bot, ChevronDown, ChevronRight, Send, Wrench } from 'lucide-react';
+import { Bot, Check, ChevronDown, ChevronRight, Copy, Send, Wrench } from 'lucide-react';
 
 import { Button } from '../../components/ui/button';
 import { Textarea } from '../../components/ui/textarea';
 import { cn } from '../../lib/cn';
-import { chatSessionCreate, chatStream } from '../../integrations/tauri/api';
+import { chatSessionCreate, chatStream, getClipboardText } from '../../integrations/tauri/api';
 import { useChatStore } from '../../stores/chatStore';
+import { useInvocationStore } from '../../stores/invocationStore';
 import { RichMarkdown } from '../../components/blocks/RichMarkdown';
 
 type ChatTokenEvent = { sessionId: string; delta: string };
@@ -16,6 +17,7 @@ type ChatToolCallEvent = { sessionId: string; callId: string; name: string; argu
 type ChatToolResultEvent = { sessionId: string; callId: string; content: unknown };
 
 export function ChatOverlayView() {
+  const currentInvocation = useInvocationStore((s) => s.currentInvocation);
   const {
     sessionId,
     sessionProviderId,
@@ -34,17 +36,68 @@ export function ChatOverlayView() {
   } = useChatStore();
   const activeAssistantMessageId = useRef<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const autoScrollRef = useRef(true);
   const [toolPanelOpen, setToolPanelOpen] = useState(false);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+
+  const lastPrefillInvocationIdRef = useRef<string | null>(null);
 
   const leakModeRef = useRef(false);
   const leakPendingRef = useRef('');
+
+  // Debug: log streamed deltas in the webview console.
+  // Enable by running in devtools: localStorage.setItem('inflow.debug.chatStream','1')
+  // Optional verbose mode: localStorage.setItem('inflow.debug.chatStreamVerbose','1')
+  const debugStreamRef = useRef(false);
+  const debugVerboseRef = useRef(false);
+  const debugBufRef = useRef('');
+  const debugLastFlushRef = useRef(0);
+
+  type DebugRun = {
+    runId: string;
+    sessionId: string;
+    providerId: string;
+    startedAtIso: string;
+    startPerfMs: number;
+    firstTokenPerfMs: number | null;
+    toolFirstPerfMs: number | null;
+    tokenEvents: number;
+    charCount: number;
+  };
+  const debugRunRef = useRef<DebugRun | null>(null);
 
   const currentProviderId = useMemo(() => {
     return sessionProviderId ?? null;
   }, [sessionProviderId]);
 
   useEffect(() => {
+    try {
+      debugStreamRef.current = localStorage.getItem('inflow.debug.chatStream') === '1';
+      debugVerboseRef.current = localStorage.getItem('inflow.debug.chatStreamVerbose') === '1';
+    } catch {
+      debugStreamRef.current = false;
+      debugVerboseRef.current = false;
+    }
+
+    const flushDebug = (force = false) => {
+      if (!debugStreamRef.current) return;
+      const buf = debugBufRef.current;
+      if (!buf) return;
+      const now = Date.now();
+      if (!force && now - debugLastFlushRef.current < 200 && buf.length < 200) return;
+      debugLastFlushRef.current = now;
+      debugBufRef.current = '';
+
+      const run = debugRunRef.current;
+      const t = run ? Math.round(performance.now() - run.startPerfMs) : null;
+      if (run && t !== null) {
+        console.log(`[chat][token][${run.runId}] +${t}ms`, buf);
+      } else {
+        console.log('[chat-token]', buf);
+      }
+    };
+
     const onToken = listen<ChatTokenEvent>('chat-token', (event) => {
       if (!sessionId || event.payload.sessionId !== sessionId) return;
       const msgId = activeAssistantMessageId.current;
@@ -93,13 +146,56 @@ export function ChatOverlayView() {
 
       const safeDelta = filterLeak(event.payload.delta);
       if (safeDelta) appendAssistantToken(msgId, safeDelta);
-      if (autoScroll && listRef.current) {
+
+      if (debugStreamRef.current && safeDelta) {
+        const run = debugRunRef.current;
+        if (run) {
+          run.tokenEvents += 1;
+          run.charCount += safeDelta.length;
+          if (run.firstTokenPerfMs === null) {
+            run.firstTokenPerfMs = performance.now();
+            const delay = Math.round(run.firstTokenPerfMs - run.startPerfMs);
+            console.log(`[chat][first-token][${run.runId}] delay=${delay}ms at=${new Date().toISOString()}`);
+          }
+        }
+
+        debugBufRef.current += safeDelta;
+        flushDebug(false);
+
+        if (debugVerboseRef.current) {
+          const runId = debugRunRef.current?.runId ?? 'unknown';
+          const t = debugRunRef.current ? Math.round(performance.now() - debugRunRef.current.startPerfMs) : null;
+          console.log(`[chat][delta][${runId}] +${t ?? '?'}ms`, safeDelta);
+        }
+      }
+
+      if (autoScrollRef.current && listRef.current) {
         listRef.current.scrollTop = listRef.current.scrollHeight;
       }
     });
 
     const onToolCall = listen<ChatToolCallEvent>('chat-toolcall', (event) => {
       if (!sessionId || event.payload.sessionId !== sessionId) return;
+
+      if (debugStreamRef.current) {
+        const run = debugRunRef.current;
+        if (run && run.toolFirstPerfMs === null && event.payload.status === 'started') {
+          run.toolFirstPerfMs = performance.now();
+          const delay = Math.round(run.toolFirstPerfMs - run.startPerfMs);
+          console.log(
+            `[chat][first-tool][${run.runId}] delay=${delay}ms name=${event.payload.name} callId=${event.payload.callId}`
+          );
+        }
+        if (debugVerboseRef.current) {
+          const runId = run?.runId ?? 'unknown';
+          const t = run ? Math.round(performance.now() - run.startPerfMs) : null;
+          console.log(
+            `[chat][toolcall][${runId}] +${t ?? '?'}ms status=${event.payload.status} name=${event.payload.name} callId=${event.payload.callId}`,
+            event.payload.arguments
+          );
+        }
+      }
+
       upsertToolCall({
         callId: event.payload.callId,
         name: event.payload.name,
@@ -110,6 +206,13 @@ export function ChatOverlayView() {
 
     const onToolResult = listen<ChatToolResultEvent>('chat-toolresult', (event) => {
       if (!sessionId || event.payload.sessionId !== sessionId) return;
+
+      if (debugStreamRef.current && debugVerboseRef.current) {
+        const run = debugRunRef.current;
+        const runId = run?.runId ?? 'unknown';
+        const t = run ? Math.round(performance.now() - run.startPerfMs) : null;
+        console.log(`[chat][toolresult][${runId}] +${t ?? '?'}ms callId=${event.payload.callId}`, event.payload.content);
+      }
       setToolResult(event.payload.callId, event.payload.content);
     });
 
@@ -117,24 +220,79 @@ export function ChatOverlayView() {
       if (!sessionId || event.payload.sessionId !== sessionId) return;
       setStreaming(false);
       activeAssistantMessageId.current = null;
+      flushDebug(true);
+      if (debugStreamRef.current) {
+        const run = debugRunRef.current;
+        if (run) {
+          const endedAtIso = new Date().toISOString();
+          const total = Math.round(performance.now() - run.startPerfMs);
+          const first = run.firstTokenPerfMs === null ? null : Math.round(run.firstTokenPerfMs - run.startPerfMs);
+          const firstTool = run.toolFirstPerfMs === null ? null : Math.round(run.toolFirstPerfMs - run.startPerfMs);
+          console.log(
+            `[chat][end][${run.runId}] total=${total}ms firstToken=${first ?? 'n/a'}ms firstTool=${firstTool ?? 'n/a'}ms tokens=${run.tokenEvents} chars=${run.charCount} startedAt=${run.startedAtIso} endedAt=${endedAtIso}`
+          );
+        } else {
+          console.log('[chat-end]');
+        }
+      }
     });
 
     const onError = listen<ChatErrorEvent>('chat-error', (event) => {
       if (!sessionId || event.payload.sessionId !== sessionId) return;
       setStreaming(false);
       activeAssistantMessageId.current = null;
+      flushDebug(true);
+      if (debugStreamRef.current) {
+        const run = debugRunRef.current;
+        const endedAtIso = new Date().toISOString();
+        const total = run ? Math.round(performance.now() - run.startPerfMs) : null;
+        console.log(
+          `[chat][error][${run?.runId ?? 'unknown'}] total=${total ?? 'n/a'}ms startedAt=${run?.startedAtIso ?? 'n/a'} endedAt=${endedAtIso}`,
+          event.payload.message
+        );
+      }
       const msgId = startAssistantMessage();
       appendAssistantToken(msgId, `\n\n[error] ${event.payload.message}`);
     });
 
     return () => {
+      flushDebug(true);
       onToken.then((f) => f());
       onToolCall.then((f) => f());
       onToolResult.then((f) => f());
       onEnd.then((f) => f());
       onError.then((f) => f());
     };
-  }, [sessionId, autoScroll]);
+  }, [sessionId]);
+
+  useEffect(() => {
+    const prefillFromClipboard = async () => {
+      if (currentInvocation?.capabilityId !== 'chat.overlay') return;
+      if (!currentInvocation.id) return;
+      if (lastPrefillInvocationIdRef.current === currentInvocation.id) return;
+
+      // Only prefill when the composer is empty to avoid overwriting user input.
+      if (input.trim()) return;
+
+      let text = currentInvocation.context?.selectedText ?? currentInvocation.context?.clipboardText;
+      if (!text || !text.trim()) {
+        try {
+          text = await getClipboardText();
+        } catch {
+          // Ignore clipboard errors silently.
+        }
+      }
+
+      if (text && text.trim()) {
+        setInput(text);
+        queueMicrotask(() => inputRef.current?.focus());
+      }
+
+      lastPrefillInvocationIdRef.current = currentInvocation.id;
+    };
+
+    prefillFromClipboard();
+  }, [currentInvocation, input, setInput]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -174,6 +332,29 @@ export function ChatOverlayView() {
     activeAssistantMessageId.current = assistantId;
     setStreaming(true);
 
+    if (debugStreamRef.current) {
+      const runId = `run_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      const startedAtIso = new Date().toISOString();
+      debugRunRef.current = {
+        runId,
+        sessionId: sid,
+        providerId: currentProviderId,
+        startedAtIso,
+        startPerfMs: performance.now(),
+        firstTokenPerfMs: null,
+        toolFirstPerfMs: null,
+        tokenEvents: 0,
+        charCount: 0,
+      };
+
+      const base = { runId, at: startedAtIso, sessionId: sid, providerId: currentProviderId, chars: text.length };
+      if (debugVerboseRef.current) {
+        console.log('[chat][start]', { ...base, text });
+      } else {
+        console.log('[chat][start]', base);
+      }
+    }
+
     try {
       await chatStream(sid, currentProviderId, text);
     } catch (err: any) {
@@ -188,10 +369,36 @@ export function ChatOverlayView() {
     const el = listRef.current;
     if (!el) return;
     const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-    setAutoScroll(isAtBottom);
+    autoScrollRef.current = isAtBottom;
   };
 
   const toolCallEntries = Object.values(toolCalls);
+
+  const isAnyToolRunning = toolCallEntries.some((t) => t.status === 'started');
+
+  const TypingIndicator = () => {
+    return (
+      <div className="flex items-center gap-2 text-[12px] text-muted-foreground select-none">
+        <div className="font-bold">正在生成</div>
+        <div className="flex items-center gap-1">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse" style={{ animationDelay: '0ms' }} />
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse" style={{ animationDelay: '160ms' }} />
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse" style={{ animationDelay: '320ms' }} />
+        </div>
+        {isAnyToolRunning && <div className="text-[10px] font-black uppercase tracking-widest opacity-70">tools</div>}
+      </div>
+    );
+  };
+
+  const copyMessageMarkdown = async (msgId: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMsgId(msgId);
+      setTimeout(() => setCopiedMsgId((cur) => (cur === msgId ? null : cur)), 900);
+    } catch {
+      // ignore
+    }
+  };
 
   const suggestions = [
     '把这个需求拆成开发任务清单，并给出优先级。',
@@ -205,7 +412,7 @@ export function ChatOverlayView() {
         <div
           ref={listRef}
           onScroll={handleScroll}
-          className="flex-1 min-h-0 overflow-auto rounded-2xl border border-border/50 bg-background/80 p-4 custom-scrollbar"
+          className="flex-1 min-h-0 overflow-auto rounded-2xl border border-border/50 bg-background/80 p-4 custom-scrollbar select-text"
         >
           <div className="space-y-4">
             {messages.length === 0 && (
@@ -233,27 +440,52 @@ export function ChatOverlayView() {
               <div key={m.id} className={cn('flex', m.role === 'user' ? 'justify-end' : 'justify-start')}>
                 <div
                   className={cn(
-                    'max-w-[min(720px,90%)] rounded-2xl border px-4 py-3 shadow-sm',
+                    'max-w-[min(720px,90%)] rounded-2xl border px-4 py-3 shadow-sm select-text',
                     m.role === 'user'
                       ? 'bg-foreground text-background border-foreground/10'
                       : 'bg-background/70 text-foreground border-border/60'
                   )}
                 >
                   {m.role === 'user' ? (
-                    <div className="text-sm font-semibold leading-relaxed whitespace-pre-wrap break-words text-background/95">
+                    <div className="text-sm font-semibold leading-relaxed whitespace-pre-wrap break-words text-background/95 select-text">
                       {m.parts.find((p) => p.type === 'markdown')?.type === 'markdown'
                         ? (m.parts.find((p) => p.type === 'markdown') as any).content
                         : ''}
                     </div>
                   ) : (
-                    <RichMarkdown
-                      className="leading-relaxed selection:bg-primary/20"
-                      markdown={
-                        m.parts.find((p) => p.type === 'markdown')?.type === 'markdown'
-                          ? (m.parts.find((p) => p.type === 'markdown') as any).content
-                          : ''
-                      }
-                    />
+                    <div className="group relative">
+                      {(() => {
+                        const raw =
+                          m.parts.find((p) => p.type === 'markdown')?.type === 'markdown'
+                            ? (m.parts.find((p) => p.type === 'markdown') as any).content
+                            : '';
+                        const isActive = activeAssistantMessageId.current === m.id;
+                        const showTyping = isStreaming && isActive && raw.trim() === '';
+                        return (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => copyMessageMarkdown(m.id, raw)}
+                              disabled={!raw || !raw.trim()}
+                              className={cn(
+                                'absolute right-0 top-0 -translate-y-1/2 translate-x-1/2 h-8 w-8 rounded-xl border border-border/60 bg-background/80 backdrop-blur-sm shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity',
+                                (!raw || !raw.trim()) && 'opacity-0 pointer-events-none'
+                              )}
+                              title="复制 Markdown"
+                            >
+                              {copiedMsgId === m.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                            </button>
+                            {showTyping ? (
+                              <div className="py-2">
+                                <TypingIndicator />
+                              </div>
+                            ) : (
+                              <RichMarkdown className="leading-relaxed selection:bg-primary/20 select-text" markdown={raw} />
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
                   )}
                 </div>
               </div>
@@ -323,6 +555,7 @@ export function ChatOverlayView() {
         <div className="shrink-0 rounded-2xl border border-border/50 bg-muted/20 p-2">
           <div className="relative">
             <Textarea
+              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="输入消息…"

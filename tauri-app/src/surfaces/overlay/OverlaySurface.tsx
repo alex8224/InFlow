@@ -20,6 +20,7 @@ export function OverlaySurface() {
   const activeService = useInvocationStore((state) => state.activeService);
   const setActiveService = useInvocationStore((state) => state.setActiveService);
   const [config, setConfig] = useState<AppConfig | null>(null);
+  const [isMaximized, setIsMaximized] = useState(false);
 
   const chatSessionId = useChatStore((s) => s.sessionId);
   const chatSessionProviderId = useChatStore((s) => s.sessionProviderId);
@@ -31,6 +32,12 @@ export function OverlaySurface() {
 
   useEffect(() => {
     loadConfig();
+
+    // Cache maximized state for styling.
+    getCurrentWindow()
+      .isMaximized()
+      .then(setIsMaximized)
+      .catch(() => setIsMaximized(false));
     
     // Listen for config changes
     const unlistenConfig = listen<AppConfig>('app-config-changed', (event) => {
@@ -51,6 +58,22 @@ export function OverlaySurface() {
     };
   }, []);
 
+  const toggleMaximize = async () => {
+    try {
+      const win = getCurrentWindow();
+      const max = await win.isMaximized();
+      if (max) {
+        await win.unmaximize();
+        setIsMaximized(false);
+      } else {
+        await win.maximize();
+        setIsMaximized(true);
+      }
+    } catch (err) {
+      console.error('Failed to toggle maximize:', err);
+    }
+  };
+
   const loadConfig = async () => {
     try {
       const data = await getAppConfig();
@@ -61,6 +84,8 @@ export function OverlaySurface() {
   };
 
   const handleDrag = async (e: React.MouseEvent) => {
+    // Avoid starting a drag on double-click (Windows titlebar behavior is maximize/restore).
+    if (e.detail > 1) return;
     if (e.button === 0) {
       const target = e.target as HTMLElement;
       // Precision dragging: only on header or designated areas
@@ -74,6 +99,14 @@ export function OverlaySurface() {
         }
       }
     }
+  };
+
+  const handleHeaderDoubleClick = async (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'BUTTON' || target.closest('button') || target.closest('[role="combobox"]')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    await toggleMaximize();
   };
 
   const handleClose = async (e: React.MouseEvent) => {
@@ -166,11 +199,17 @@ export function OverlaySurface() {
     <div className="w-full h-full bg-transparent font-sans antialiased select-none">
       
       {/* The actual Card-like window - Removed large shadows to avoid clipping and allow native resizing at edges */}
-      <div className="w-full h-full bg-background text-foreground flex flex-col rounded-2xl overflow-hidden border border-border/50">
+      <div
+        className={cn(
+          'w-full h-full bg-background text-foreground flex flex-col overflow-hidden',
+          isMaximized ? 'rounded-none border-0' : 'rounded-2xl border border-border/50'
+        )}
+      >
         
         {/* Header - Shared Shell */}
         <header 
           onMouseDown={handleDrag}
+          onDoubleClick={handleHeaderDoubleClick}
           data-tauri-drag-region
           className="flex justify-between items-center px-4 h-14 bg-muted/40 border-b border-border/40 select-none cursor-grab active:cursor-grabbing shrink-0 relative"
         >

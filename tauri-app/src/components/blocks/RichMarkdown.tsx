@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Copy, Check } from 'lucide-react';
@@ -111,27 +111,37 @@ function MermaidBlock({ code }: { code: string }) {
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const id = useMemo(() => `mmd_${Date.now()}_${Math.random().toString(16).slice(2)}`, []);
+  const renderSeqRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
-    setSvg(null);
+    const seq = (renderSeqRef.current += 1);
     setError(null);
 
-    (async () => {
-      await ensureMermaidInitialized();
-      const { default: mermaid } = await import('mermaid');
-      const res = (await mermaid.render(id, code)) as unknown as MermaidRenderResult;
-      if (!cancelled) setSvg(res.svg);
-    })().catch((e: any) => {
-      if (!cancelled) setError(e?.message || String(e));
-    });
+    // Streaming markdown can update the same mermaid fence many times.
+    // Debounce rendering to avoid constant re-render/flicker and heavy layout thrash.
+    const timer = setTimeout(() => {
+      (async () => {
+        await ensureMermaidInitialized();
+        const { default: mermaid } = await import('mermaid');
+        const res = (await mermaid.render(id, code)) as unknown as MermaidRenderResult;
+        if (cancelled) return;
+        if (seq !== renderSeqRef.current) return;
+        setSvg(res.svg);
+      })().catch((e: any) => {
+        if (cancelled) return;
+        if (seq !== renderSeqRef.current) return;
+        setError(e?.message || String(e));
+      });
+    }, 350);
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [code, id]);
 
-  if (error) {
+  if (error && !svg) {
     return <CodeFence language="mermaid" code={code} />;
   }
 
