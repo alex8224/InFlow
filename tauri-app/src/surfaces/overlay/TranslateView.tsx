@@ -31,6 +31,9 @@ const LANGUAGES = [
 
 export function TranslateView() {
   const currentInvocation = useInvocationStore((state) => state.currentInvocation);
+  const activeService = useInvocationStore((state) => state.activeService);
+  const setActiveService = useInvocationStore((state) => state.setActiveService);
+  
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [inputText, setInputText] = useState('');
   const [translatedText, setTranslatedText] = useState('');
@@ -38,7 +41,6 @@ export function TranslateView() {
   const [toLang, setToLang] = useState('zh-CN');
   const [isTranslating, setIsTranslating] = useState(false);
   const [error, setError] = useState('');
-  const [activeService, setActiveService] = useState<'google' | 'ai'>('google');
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
@@ -59,7 +61,9 @@ export function TranslateView() {
     const unlistenConfig = listen<AppConfig>('app-config-changed', (event) => {
       console.log('Config updated from other window:', event.payload);
       setConfig(event.payload);
-      setActiveService(event.payload.preferredService as 'google' | 'ai');
+      if (event.payload.preferredService) {
+        setActiveService(event.payload.preferredService as 'google' | 'ai');
+      }
     });
 
     return () => {
@@ -72,7 +76,9 @@ export function TranslateView() {
     try {
       const data = await getAppConfig();
       setConfig(data);
-      setActiveService(data.preferredService as 'google' | 'ai');
+      if (data.preferredService) {
+        setActiveService(data.preferredService as 'google' | 'ai');
+      }
     } catch (err) {
       console.error('Failed to load config:', err);
     }
@@ -148,34 +154,10 @@ export function TranslateView() {
     }
   };
 
-  const currentProvider = config?.llmProviders.find(p => p.id === config.activeProviderId);
-
   return (
     <div className="flex-1 flex flex-col min-h-0 animate-in fade-in duration-300">
       
-      {/* Service Selector Toggle */}
-      <div className="flex bg-muted/40 p-1 rounded-xl border border-border/50 mb-3 shrink-0 self-center">
-        <button
-          onClick={() => setActiveService('google')}
-          className={cn(
-            "flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
-            activeService === 'google' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          <Zap className={cn("w-3.5 h-3.5", activeService === 'google' ? "text-yellow-500 fill-yellow-500" : "")} />
-          Google 极速
-        </button>
-        <button
-          onClick={() => setActiveService('ai')}
-          className={cn(
-            "flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
-            activeService === 'ai' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          <Sparkles className={cn("w-3.5 h-3.5", activeService === 'ai' ? "text-blue-500 fill-blue-500" : "")} />
-          AI 深度 {currentProvider && <span className="opacity-40 text-[10px]">({currentProvider.name})</span>}
-        </button>
-      </div>
+      {/* Service Selector Toggle - Removed from here, moved to Header */}
 
       {/* Input Area - Fixed Height 140px */}
       <div className="h-[130px] shrink-0 mb-3 relative group">

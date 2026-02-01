@@ -1,13 +1,48 @@
 import { useState, useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { X, Globe } from 'lucide-react';
-import { closeOverlay } from '../../integrations/tauri/api';
+import { listen } from '@tauri-apps/api/event';
+import { X, Globe, Zap, Sparkles } from 'lucide-react';
+import { closeOverlay, getAppConfig, AppConfig } from '../../integrations/tauri/api';
 import { cn } from '../../lib/cn';
 import { useInvocationStore } from '../../stores/invocationStore';
 import { viewRegistry } from '../../core/registry/viewRegistry';
 
 export function OverlaySurface() {
   const currentInvocation = useInvocationStore((state) => state.currentInvocation);
+  const activeService = useInvocationStore((state) => state.activeService);
+  const setActiveService = useInvocationStore((state) => state.setActiveService);
+  const [config, setConfig] = useState<AppConfig | null>(null);
+
+  useEffect(() => {
+    loadConfig();
+    
+    // Listen for config changes
+    const unlistenConfig = listen<AppConfig>('app-config-changed', (event) => {
+      setConfig(event.payload);
+    });
+
+    // Global ESC key listener to close overlay
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeOverlay();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      unlistenConfig.then(f => f());
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  const loadConfig = async () => {
+    try {
+      const data = await getAppConfig();
+      setConfig(data);
+    } catch (err) {
+      console.error('Failed to load config in overlay:', err);
+    }
+  };
 
   const handleDrag = async (e: React.MouseEvent) => {
     if (e.button === 0) {
@@ -61,6 +96,8 @@ export function OverlaySurface() {
     );
   };
 
+  const currentProvider = config?.llmProviders.find(p => p.id === config.activeProviderId);
+
   return (
     /* Outermost container - Clean edge alignment for native window handling */
     <div className="w-full h-full bg-transparent font-sans antialiased select-none">
@@ -72,7 +109,7 @@ export function OverlaySurface() {
         <header 
           onMouseDown={handleDrag}
           data-tauri-drag-region
-          className="flex justify-between items-center px-5 h-14 bg-muted/40 border-b border-border/40 select-none cursor-grab active:cursor-grabbing shrink-0"
+          className="flex justify-between items-center px-4 h-14 bg-muted/40 border-b border-border/40 select-none cursor-grab active:cursor-grabbing shrink-0 relative"
         >
           <div className="flex items-center gap-3 pointer-events-none text-left">
             <div className="bg-primary/10 p-2 rounded-xl text-primary shadow-sm border border-primary/10">
@@ -80,11 +117,36 @@ export function OverlaySurface() {
             </div>
             <div className="flex flex-col">
                 <span className="font-black text-xs tracking-widest uppercase opacity-90">inFlow</span>
-                <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-tighter -mt-0.5 truncate max-w-[200px]">
+                <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-tighter -mt-0.5 truncate max-w-[100px]">
                     {currentInvocation?.capabilityId || 'System'}
                 </span>
             </div>
           </div>
+
+          {/* Mode Selector - Absolutely Centered in Header */}
+          <div className="absolute left-1/2 -translate-x-1/2 flex bg-background/50 backdrop-blur-sm p-1 rounded-xl border border-border/50 scale-90 origin-center">
+            <button
+              onClick={() => setActiveService('google')}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold transition-all",
+                activeService === 'google' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Zap className={cn("w-3 h-3", activeService === 'google' ? "text-yellow-500 fill-yellow-500" : "")} />
+              极速
+            </button>
+            <button
+              onClick={() => setActiveService('ai')}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold transition-all",
+                activeService === 'ai' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Sparkles className={cn("w-3 h-3", activeService === 'ai' ? "text-blue-500 fill-blue-500" : "")} />
+              AI
+            </button>
+          </div>
+
           <button
             onClick={handleClose}
             onMouseDown={(e) => e.stopPropagation()}
@@ -105,8 +167,11 @@ export function OverlaySurface() {
             <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_12px_rgba(34,197,94,0.8)] animate-pulse" />
             <span className="text-[9px] font-black uppercase tracking-[0.3em] text-muted-foreground/60">System Ready</span>
           </div>
-          <div className="flex items-center gap-1 opacity-20 text-muted-foreground font-black">
-            <span className="text-[9px] uppercase tracking-widest italic">v0.1.0</span>
+          <div className="flex items-center gap-3">
+             {activeService === 'ai' && currentProvider && (
+               <span className="text-[9px] font-bold text-primary/40 uppercase tracking-widest">{currentProvider.name}</span>
+             )}
+             <span className="text-[9px] uppercase tracking-widest italic opacity-20 text-muted-foreground font-black">v0.1.0</span>
           </div>
         </footer>
       </div>
