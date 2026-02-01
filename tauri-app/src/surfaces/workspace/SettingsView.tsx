@@ -13,7 +13,8 @@ import {
   Settings2,
   ExternalLink,
   ShieldCheck,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -26,9 +27,14 @@ const PRESETS = [
   { id: 'siliconflow', name: '硅基流动', kind: 'OpenAI', baseUrl: 'https://api.siliconflow.cn/v1', modelId: 'deepseek-ai/DeepSeek-V3', icon: 'S' },
   { id: 'volcengine', name: '火山引擎', kind: 'OpenAI', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', modelId: 'ep-...', icon: 'V' },
   { id: 'minimax', name: 'Minimax', kind: 'OpenAI', baseUrl: 'https://api.minimax.chat/v1', modelId: 'abab6.5-chat', icon: 'M' },
-  { id: 'gemini', name: 'Google Gemini', kind: 'Gemini', baseUrl: '', modelId: 'gemini-2.0-flash-exp', icon: 'G' },
+  { id: 'gemini', name: 'Google Gemini', kind: 'Gemini', baseUrl: 'https://generativelanguage.googleapis.com', modelId: 'gemini-2.0-flash', icon: 'G' },
   { id: 'openai', name: 'OpenAI', kind: 'OpenAI', baseUrl: 'https://api.openai.com/v1', modelId: 'gpt-4o-mini', icon: 'O' },
 ];
+
+const DEFAULT_URLS: Record<string, string> = {
+  'OpenAI': 'https://api.openai.com/v1',
+  'Gemini': 'https://generativelanguage.googleapis.com',
+};
 
 export function SettingsView() {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -56,12 +62,13 @@ export function SettingsView() {
     }
   };
 
-  const handleSave = async () => {
-    if (!config) return;
+  const handleSave = async (updatedConfig?: AppConfig) => {
+    const configToSave = updatedConfig || config;
+    if (!configToSave) return;
     setSaving(true);
     try {
-      await updateAppConfig(config);
-      setMessage({ text: '配置已保存成功', type: 'success' });
+      await updateAppConfig(configToSave);
+      setMessage({ text: '配置已保存', type: 'success' });
       setTimeout(() => setMessage({ text: '', type: 'info' }), 3000);
     } catch (err: any) {
       setMessage({ text: `保存失败: ${err}`, type: 'error' });
@@ -89,10 +96,11 @@ export function SettingsView() {
       apiKey: '',
       modelId: preset.modelId
     };
-    setConfig({
-      ...config,
-      llmProviders: [...config.llmProviders, newProvider]
-    });
+    const newConfig = {
+        ...config,
+        llmProviders: [...config.llmProviders, newProvider]
+    };
+    setConfig(newConfig);
     setSelectedId(newId);
     setShowPresets(false);
   };
@@ -104,7 +112,8 @@ export function SettingsView() {
     if (newActiveId === id) {
         newActiveId = newProviders[0]?.id || null;
     }
-    setConfig({ ...config, llmProviders: newProviders, activeProviderId: newActiveId });
+    const newConfig = { ...config, llmProviders: newProviders, activeProviderId: newActiveId };
+    setConfig(newConfig);
     if (selectedId === id) {
       setSelectedId(newProviders[0]?.id || null);
     }
@@ -126,7 +135,7 @@ export function SettingsView() {
     <div className="h-full flex flex-col animate-in fade-in duration-500">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">系统设置</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">系统设置</h1>
           <p className="text-muted-foreground mt-1 text-sm">管理 AI 模型及其接入协议</p>
         </div>
         <div className="flex items-center gap-3">
@@ -138,7 +147,7 @@ export function SettingsView() {
               {message.text}
             </span>
           )}
-          <Button onClick={handleSave} disabled={saving} size="sm" className="font-bold shadow-lg shadow-primary/20">
+          <Button onClick={() => handleSave()} disabled={saving} size="sm" className="font-bold shadow-lg shadow-primary/20 px-6">
             {saving ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
             保存配置
           </Button>
@@ -146,9 +155,8 @@ export function SettingsView() {
       </div>
 
       <div className="flex-1 flex gap-8 min-h-0">
-        {/* Left Sidebar: Provider List */}
-        <aside className="w-72 flex flex-col gap-4">
-          <Card className="flex-1 flex flex-col overflow-hidden shadow-sm border-border/50">
+        <aside className="w-72 flex flex-col gap-4 shrink-0">
+          <Card className="flex-1 flex flex-col overflow-hidden shadow-sm border-border/50 bg-background">
             <CardHeader className="p-4 border-b bg-muted/20 flex flex-row items-center justify-between space-y-0 shrink-0">
                 <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">模型提供商</CardTitle>
                 <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg hover:bg-primary/10 hover:text-primary" onClick={() => setShowPresets(true)}>
@@ -173,7 +181,7 @@ export function SettingsView() {
                   )}>
                     {p.name[0]}
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 text-left">
                     <div className="font-bold text-sm truncate">{p.name}</div>
                     <div className={cn(
                       "text-[9px] truncate opacity-60 font-medium uppercase tracking-tighter",
@@ -190,26 +198,33 @@ export function SettingsView() {
             </div>
           </Card>
 
-          {/* Service Preference Toggle */}
-          <Card className="shadow-sm border-border/50 overflow-hidden shrink-0">
+          <Card className="shadow-sm border-border/50 overflow-hidden shrink-0 bg-background">
             <div className="p-4 flex flex-col gap-3 bg-muted/5">
                 <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">翻译引擎偏好</span>
                 <div className="flex bg-muted rounded-xl p-1 border shadow-inner">
                     <button 
-                        onClick={() => setConfig({...config, preferredService: 'google'})}
+                        onClick={() => {
+                            const newConfig = {...config, preferredService: 'google'};
+                            setConfig(newConfig);
+                            handleSave(newConfig);
+                        }}
                         className={cn(
                             "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all", 
-                            config.preferredService === 'google' ? "bg-background shadow-sm text-foreground" : "opacity-40 hover:opacity-70"
+                            config.preferredService === 'google' ? "bg-background shadow-sm text-foreground" : "opacity-40 hover:opacity-70 text-foreground"
                         )}
                     >
                         <Globe className="w-3.5 h-3.5" />
                         Google
                     </button>
                     <button 
-                        onClick={() => setConfig({...config, preferredService: 'ai'})}
+                        onClick={() => {
+                            const newConfig = {...config, preferredService: 'ai'};
+                            setConfig(newConfig);
+                            handleSave(newConfig);
+                        }}
                         className={cn(
                             "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all", 
-                            config.preferredService === 'ai' ? "bg-background shadow-sm text-blue-500" : "opacity-40 hover:opacity-70"
+                            config.preferredService === 'ai' ? "bg-background shadow-sm text-blue-500" : "opacity-40 hover:opacity-70 text-foreground"
                         )}
                     >
                         <Sparkles className="w-3.5 h-3.5" />
@@ -220,17 +235,16 @@ export function SettingsView() {
           </Card>
         </aside>
 
-        {/* Right Content: Provider Details */}
         <main className="flex-1 min-w-0 overflow-auto pr-2">
           {selectedProvider ? (
             <div className="space-y-8 animate-in slide-in-from-right-4 duration-300 pb-12">
-              <div className="flex items-center justify-between bg-muted/10 p-6 rounded-[2rem] border border-border/50">
+              <div className="flex items-center justify-between bg-muted/10 p-6 rounded-[2rem] border border-border/50 shadow-sm bg-background">
                 <div className="flex items-center gap-5">
                   <div className="w-16 h-16 bg-primary text-primary-foreground rounded-2xl flex items-center justify-center font-black text-2xl shadow-xl shadow-primary/20">
                     {selectedProvider.name[0]}
                   </div>
-                  <div>
-                    <h2 className="text-2xl font-bold tracking-tight">{selectedProvider.name}</h2>
+                  <div className="text-left">
+                    <h2 className="text-2xl font-bold tracking-tight text-foreground">{selectedProvider.name}</h2>
                     <div className="flex items-center gap-2 mt-1">
                         <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-black uppercase tracking-widest">{selectedProvider.kind}</span>
                         <span className="text-[10px] text-muted-foreground font-medium truncate max-w-[200px] opacity-60">{selectedProvider.modelId}</span>
@@ -241,76 +255,100 @@ export function SettingsView() {
                    <Button 
                     variant={config.activeProviderId === selectedId ? "default" : "outline"}
                     size="sm"
-                    className="font-bold rounded-xl h-10 px-6"
-                    onClick={() => setConfig({...config, activeProviderId: selectedId})}
+                    className="font-bold rounded-xl h-10 px-6 shadow-sm"
+                    onClick={() => {
+                        const newConfig = {...config, activeProviderId: selectedId};
+                        setConfig(newConfig);
+                        handleSave(newConfig);
+                    }}
                    >
-                    {config.activeProviderId === selectedId ? "当前默认提供商" : "设为默认"}
+                    {config.activeProviderId === selectedId ? "当前默认" : "设为默认"}
                    </Button>
-                   <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl text-destructive hover:bg-destructive/10" onClick={() => deleteProvider(selectedId!)}>
+                   <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl text-destructive hover:bg-destructive/10 transition-colors" onClick={() => deleteProvider(selectedId!)}>
                      <Trash2 className="w-4.5 h-4.5" />
                    </Button>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 px-2">
-                 <div className="space-y-2.5">
+                 <div className="space-y-2.5 text-left">
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1">显示名称</label>
                     <Input 
                       value={selectedProvider.name}
                       onChange={(e) => updateSelectedProvider({ name: e.target.value })}
                       placeholder="例如: DeepSeek 翻译"
-                      className="bg-muted/20 font-bold h-12 rounded-xl border-border/50 focus:bg-background transition-all px-4"
+                      className="bg-muted/20 font-bold h-12 rounded-xl border-border/50 focus:bg-background transition-all px-4 text-foreground"
                     />
                  </div>
-                 <div className="space-y-2.5">
+                 <div className="space-y-2.5 text-left">
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1">协议类型</label>
-                    <div className="flex bg-muted/30 rounded-xl p-1 border border-border/50">
+                    <div className="flex bg-muted/30 rounded-xl p-1 border border-border/50 h-12 items-center shadow-inner">
                         <button 
                             className={cn(
                                 "flex-1 h-10 rounded-lg text-xs font-black transition-all",
-                                selectedProvider.kind === 'OpenAI' ? "bg-background shadow-sm" : "opacity-40 hover:opacity-60"
+                                selectedProvider.kind === 'OpenAI' ? "bg-background shadow-sm text-foreground" : "opacity-40 hover:opacity-60 text-foreground"
                             )}
                             onClick={() => updateSelectedProvider({ kind: 'OpenAI' })}
                         >OpenAI 兼容</button>
                         <button 
                             className={cn(
                                 "flex-1 h-10 rounded-lg text-xs font-black transition-all",
-                                selectedProvider.kind === 'Gemini' ? "bg-background shadow-sm" : "opacity-40 hover:opacity-60"
+                                selectedProvider.kind === 'Gemini' ? "bg-background shadow-sm text-foreground" : "opacity-40 hover:opacity-60 text-foreground"
                             )}
                             onClick={() => updateSelectedProvider({ kind: 'Gemini' })}
                         >Google Gemini</button>
                     </div>
                  </div>
 
-                 {selectedProvider.kind === 'OpenAI' && (
-                    <div className="md:col-span-2 space-y-2.5">
-                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1 flex items-center gap-2">
-                            <LinkIcon className="w-3 h-3" />
-                            Base URL
-                        </label>
+                 <div className="md:col-span-2 space-y-2.5 text-left">
+                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1 flex items-center gap-2">
+                         <LinkIcon className="w-3 h-3" />
+                         Base URL
+                     </label>
+                     <div className="relative group/url">
                         <Input 
                         value={selectedProvider.baseUrl || ''}
                         onChange={(e) => updateSelectedProvider({ baseUrl: e.target.value })}
-                        placeholder="https://api.openai.com/v1"
-                        className="bg-muted/20 h-12 rounded-xl border-border/50 focus:bg-background transition-all px-4 font-mono text-sm"
+                        placeholder={DEFAULT_URLS[selectedProvider.kind] || "请输入 API 地址"}
+                        className="bg-muted/20 h-12 rounded-xl border-border/50 focus:bg-background transition-all px-4 font-mono text-sm text-foreground pr-24"
                         />
-                    </div>
-                 )}
+                         {(!selectedProvider.baseUrl || selectedProvider.baseUrl !== DEFAULT_URLS[selectedProvider.kind]) && DEFAULT_URLS[selectedProvider.kind] && (
+                            <button 
+                                onClick={() => updateSelectedProvider({ baseUrl: DEFAULT_URLS[selectedProvider.kind] })}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] bg-primary/10 hover:bg-primary/20 text-primary px-2 py-1 rounded-md font-bold transition-all"
+                            >
+                                使用默认值
+                            </button>
+                        )}
+                     </div>
+                     {DEFAULT_URLS[selectedProvider.kind] && (
+                        <p className="text-[9px] text-muted-foreground/50 mt-1 px-1 flex items-center gap-1">
+                            官方默认: <code className="bg-muted px-1 rounded">{DEFAULT_URLS[selectedProvider.kind]}</code>
+                        </p>
+                     )}
+                  </div>
 
-                 <div className="space-y-2.5">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1 flex items-center gap-2">
-                        <Box className="w-3 h-3" />
-                        Model ID
-                    </label>
-                    <Input 
-                      value={selectedProvider.modelId}
-                      onChange={(e) => updateSelectedProvider({ modelId: e.target.value })}
-                      placeholder="例如: gpt-4o 或 deepseek-chat"
-                      className="bg-muted/20 h-12 rounded-xl border-border/50 focus:bg-background transition-all px-4 font-mono text-sm"
-                    />
-                 </div>
+                  <div className="space-y-2.5 text-left">
+                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1 flex items-center gap-2">
+                         <Box className="w-3 h-3" />
+                         Model ID
+                     </label>
+                     <Input 
+                       value={selectedProvider.modelId}
+                       onChange={(e) => updateSelectedProvider({ modelId: e.target.value })}
+                       placeholder="例如: gpt-4o 或 deepseek-chat"
+                       className="bg-muted/20 h-12 rounded-xl border-border/50 focus:bg-background transition-all px-4 font-mono text-sm text-foreground"
+                     />
+                     <p className="text-[9px] text-muted-foreground/50 mt-1 px-1">
+                        实际发送: <code className="bg-primary/5 text-primary/70 px-1 rounded font-bold">
+                            {selectedProvider.modelId.startsWith('/') ? selectedProvider.modelId.slice(1) : (selectedProvider.modelId.includes('/') ? selectedProvider.modelId : `${selectedProvider.kind.toLowerCase()}/${selectedProvider.modelId}`)}
+                        </code>
+                        <span className="ml-2">(输入 / 开头可禁用前缀)</span>
+                     </p>
+                  </div>
 
-                 <div className="space-y-2.5">
+
+                 <div className="space-y-2.5 text-left">
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1 flex items-center gap-2">
                         <ShieldCheck className="w-3 h-3" />
                         API Key
@@ -320,7 +358,7 @@ export function SettingsView() {
                       value={selectedProvider.apiKey}
                       onChange={(e) => updateSelectedProvider({ apiKey: e.target.value })}
                       placeholder="在此粘贴您的密钥"
-                      className="bg-muted/20 h-12 rounded-xl border-border/50 focus:bg-background transition-all px-4"
+                      className="bg-muted/20 h-12 rounded-xl border-border/50 focus:bg-background transition-all px-4 text-foreground"
                     />
                  </div>
               </div>
@@ -332,7 +370,7 @@ export function SettingsView() {
                           <p className="text-sm font-bold text-foreground">该供应商将作为系统默认 AI 引擎</p>
                           <p className="text-xs text-muted-foreground max-w-[320px]">用于流式翻译、文档总结及未来所有 AI 增强功能。</p>
                           <div className="pt-4 flex justify-center">
-                            <a href="#" className="text-[10px] font-black uppercase tracking-widest text-primary hover:underline inline-flex items-center gap-1.5">
+                            <a href="#" className="text-[10px] font-black uppercase tracking-widest text-primary hover:underline inline-flex items-center gap-1.5 font-bold">
                                查看配置指南 <ExternalLink className="w-3 h-3" />
                             </a>
                           </div>
@@ -342,7 +380,7 @@ export function SettingsView() {
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-6 opacity-20">
-               <div className="p-10 bg-muted/50 rounded-full">
+               <div className="p-10 bg-muted/50 rounded-full shadow-inner">
                 <Cpu className="w-20 h-20" />
                </div>
                <p className="font-black uppercase tracking-[0.5em] text-lg">Select a Provider</p>
@@ -351,11 +389,10 @@ export function SettingsView() {
         </main>
       </div>
 
-      {/* Presets Modal overlay */}
       {showPresets && (
         <div className="fixed inset-0 bg-background/60 backdrop-blur-md z-[100] flex items-center justify-center p-8 animate-in fade-in duration-300">
-           <Card className="w-full max-w-2xl shadow-[0_32px_64px_-12px_rgba(0,0,0,0.4)] rounded-[2.5rem] overflow-hidden border-border/40">
-              <CardHeader className="p-10 pb-6">
+           <Card className="w-full max-w-2xl shadow-[0_32px_64px_-12px_rgba(0,0,0,0.4)] rounded-[2.5rem] overflow-hidden border-border/40 bg-background text-foreground">
+              <CardHeader className="p-10 pb-6 text-left">
                   <div className="flex items-center justify-between">
                     <div>
                         <CardTitle className="text-3xl font-black tracking-tight">添加模型提供商</CardTitle>
@@ -374,10 +411,10 @@ export function SettingsView() {
                           onClick={() => addFromPreset(preset)}
                           className="flex flex-col items-center gap-4 p-6 rounded-[2rem] border border-border/50 bg-muted/20 hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all hover:scale-105 active:scale-95 group shadow-sm hover:shadow-xl hover:shadow-primary/20"
                         >
-                          <div className="w-14 h-14 bg-background rounded-2xl flex items-center justify-center font-black text-2xl shadow-inner group-hover:bg-white/20 transition-colors">
+                          <div className="w-14 h-14 bg-background rounded-2xl flex items-center justify-center font-black text-2xl shadow-inner group-hover:bg-white/20 transition-colors text-foreground group-hover:text-inherit">
                             {preset.icon}
                           </div>
-                          <span className="font-bold text-sm tracking-tight">{preset.name}</span>
+                          <span className="font-bold text-sm tracking-tight text-foreground group-hover:text-inherit">{preset.name}</span>
                         </button>
                       ))}
                   </div>

@@ -6,6 +6,8 @@ use futures::StreamExt;
 
 mod config;
 use config::{AppConfig};
+use genai::chat::{ChatMessage, ChatRequest, ChatStreamEvent};
+use genai::Client;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -134,89 +136,91 @@ async fn translate_text_ai_stream(
         return Err("请先在设置中配置 API Key".to_string());
     }
 
-    let client = reqwest::Client::new();
+    // 深度调试日志：Provider 原始信息
+    println!("=== AI DEBUG START ===");
+    println!("Provider Kind: {}", provider.kind);
+    println!("Config Model ID: {}", provider.model_id);
+    println!("Config Base URL: {:?}", provider.base_url);
+
+    // 准备 API Key 和 Base URL
+    let api_key = provider.api_key.clone();
+    let base_url = provider.base_url.clone();
     
-    if provider.kind.to_lowercase() == "gemini" {
-        // Google Gemini API Style
-        let api_url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?key={}",
-            provider.model_id, provider.api_key
-        );
-        
-        let payload = serde_json::json!({
-            "contents": [{
-                "parts": [{
-                    "text": format!("Translate to {}: {}", to_lang, text)
-                }]
-            }]
-        });
+    let auth_resolver = genai::resolver::AuthResolver::from_resolver_fn(move |_| {
+        Ok(Some(genai::resolver::AuthData::from_single(api_key.clone())))
+    });
 
-        let mut response_stream = client
-            .post(api_url)
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| format!("Gemini 请求失败: {}", e))?
-            .bytes_stream();
+    let mut builder = Client::builder()
+        .with_auth_resolver(auth_resolver);
 
-        while let Some(chunk_result) = response_stream.next().await {
-            let chunk = chunk_result.map_err(|e| format!("流读取失败: {}", e))?;
-            let text_chunk = String::from_utf8_lossy(&chunk);
+    if let Some(url) = base_url {
+        if !url.trim().is_empty() {
+            let api_key_for_service = provider.api_key.clone();
             
-            // Gemini returns chunks of JSON objects in an array or individual objects
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text_chunk) {
-                 if let Some(parts) = json["candidates"][0]["content"]["parts"].as_array() {
-                     for part in parts {
-                         if let Some(t) = part["text"].as_str() {
-                             let _ = app.emit("translation-token", t);
-                         }
-                     }
-                 }
+            // 修正：genai 库在拼接 Gemini 路径时直接采用 {base_url}models/...
+            // 必须确保以 / 结尾，否则会产生 "builder error"
+            let mut final_url = url.trim().to_string();
+            if !final_url.ends_with('/') {
+                final_url.push('/');
             }
+
+            println!("Resolved Endpoint (Base URL): {}", final_url);
+
+            builder = builder.with_service_target_resolver_fn(move |mut target: genai::ServiceTarget| {
+                target.endpoint = genai::resolver::Endpoint::from_owned(final_url.clone());
+                target.auth = genai::resolver::AuthData::from_single(api_key_for_service.clone());
+                Ok(target)
+            });
         }
+    }
+
+    let client = builder.build();
+    
+    // 模型 ID 识别逻辑
+    let kind_lower = provider.kind.to_lowercase();
+    let model = if provider.model_id.starts_with('/') {
+        provider.model_id[1..].to_string()
+    } else if provider.model_id.contains('/') {
+        provider.model_id.clone()
     } else {
-        // OpenAI Compatible Style (DeepSeek, SiliconFlow, Volcengine, Minimax, etc.)
-        let base_url = provider.base_url.as_ref().ok_or("OpenAI 协议需要配置 Base URL")?;
-        let api_url = if base_url.ends_with("/chat/completions") {
-            base_url.clone()
-        } else {
-            format!("{}/chat/completions", base_url.trim_end_matches('/'))
-        };
+        format!("{}/{}", kind_lower, provider.model_id)
+    };
 
-        let payload = serde_json::json!({
-            "model": provider.model_id,
-            "messages": [
-                { "role": "system", "content": "You are a professional translator. Only provide translated text." },
-                { "role": "user", "content": format!("Translate from {} to {}: {}", from_lang, to_lang, text) }
-            ],
-            "stream": true
-        });
+    println!("Final genai Model String: {}", model);
 
-        let mut response_stream = client
-            .post(api_url)
-            .header("Authorization", format!("Bearer {}", provider.api_key))
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| format!("AI 请求失败: {}", e))?
-            .bytes_stream();
+    let chat_req = ChatRequest::new(vec![
+        ChatMessage::system("You are a professional translator. Only provide translated text."),
+        ChatMessage::user(format!("Translate from {} to {}: {}", from_lang, to_lang, text)),
+    ]);
 
-        while let Some(chunk_result) = response_stream.next().await {
-            let chunk = chunk_result.map_err(|e| format!("流读取失败: {}", e))?;
-            let text_chunk = String::from_utf8_lossy(&chunk);
-            
-            for line in text_chunk.lines() {
-                let line = line.trim();
-                if line.is_empty() { continue; }
-                if let Some(data) = line.strip_prefix("data: ") {
-                    if data == "[DONE]" { break; }
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
-                        if let Some(content) = json["choices"][0]["delta"]["content"].as_str() {
-                            let _ = app.emit("translation-token", content);
-                        }
-                    }
+    let stream_res = match client.exec_chat_stream(&model, chat_req, None).await {
+        Ok(res) => {
+            println!("DEBUG: exec_chat_stream SUCCESS");
+            res
+        },
+        Err(e) => {
+            println!("!!! AI DEBUG: exec_chat_stream FAILED !!!");
+            println!("Error Detail: {:?}", e);
+            return Err(format!("AI 请求失败: {}", e));
+        }
+    };
+
+    let mut actual_stream = stream_res.stream;
+
+    println!("--- AI Debug: Response Stream Started ---");
+    while let Some(event_res) = actual_stream.next().await {
+        let event = event_res.map_err(|e| format!("流读取失败: {}", e))?;
+        match &event {
+            ChatStreamEvent::Chunk(chunk) => {
+                let _ = app.emit("translation-token", chunk.content.clone());
+            }
+            ChatStreamEvent::End(end) => {
+                println!("--- AI Debug: Stream Ended ---");
+                if let Some(usage) = &end.captured_usage {
+                    println!("Usage: {:?}", usage);
                 }
             }
+            _ => {}
         }
     }
 
@@ -229,8 +233,10 @@ fn get_app_config() -> Result<AppConfig, String> {
 }
 
 #[tauri::command]
-fn update_app_config(config: AppConfig) -> Result<(), String> {
-    config.save()
+fn update_app_config(config: AppConfig, app: AppHandle) -> Result<(), String> {
+    config.save()?;
+    let _ = app.emit("app-config-changed", config);
+    Ok(())
 }
 
 #[tauri::command]
@@ -303,7 +309,11 @@ fn open_workspace(_view: Option<String>, app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn get_clipboard_text() -> Result<String, String> {
-    Ok("".to_string())
+    let mut clipboard = arboard::Clipboard::new()
+        .map_err(|e| format!("无法初始化剪贴板: {}", e))?;
+    
+    clipboard.get_text()
+        .map_err(|e| format!("读取剪贴板失败: {}", e))
 }
 
 fn handle_deep_link(app: &AppHandle, url: String) {

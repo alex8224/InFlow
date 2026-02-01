@@ -12,8 +12,9 @@ export function OverlaySurface() {
   const handleDrag = async (e: React.MouseEvent) => {
     if (e.button === 0) {
       const target = e.target as HTMLElement;
-      if (target.closest('header')) {
-        if (target.tagName !== 'BUTTON' && !target.closest('button')) {
+      // Precision dragging: only on header or designated areas
+      if (target.closest('header') || target.classList.contains('drag-region')) {
+        if (target.tagName !== 'BUTTON' && !target.closest('button') && !target.closest('[role="combobox"]')) {
           try {
             await getCurrentWindow().startDragging();
           } catch (err) {
@@ -33,17 +34,14 @@ export function OverlaySurface() {
   const renderContent = () => {
     if (!currentInvocation) {
       return (
-        <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground/30 gap-4">
-          <Globe className="w-12 h-12 opacity-20 animate-pulse" />
-          <p className="text-xs font-black tracking-[0.3em] uppercase italic opacity-40">Ready</p>
+        <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4">
+          <Globe className="w-12 h-12 opacity-10 animate-pulse" />
+          <p className="text-sm font-medium animate-pulse tracking-widest uppercase italic">Waiting for Command</p>
         </div>
       );
     }
 
-    // Match using capabilityId
-    const view = viewRegistry.getAll().find(v => 
-      v.capabilityIds.includes(currentInvocation.capabilityId)
-    );
+    const view = viewRegistry.getAll().find(v => v.capabilityIds.includes(currentInvocation.capabilityId));
     
     if (view) {
       const Component = view.component;
@@ -64,47 +62,54 @@ export function OverlaySurface() {
   };
 
   return (
-    <div className="w-full h-full bg-background text-foreground flex flex-col font-sans antialiased select-none overflow-hidden">
-        {/* Header - Fixed 48px */}
+    /* Outermost container - Clean edge alignment for native window handling */
+    <div className="w-full h-full bg-transparent font-sans antialiased select-none">
+      
+      {/* The actual Card-like window - Removed large shadows to avoid clipping and allow native resizing at edges */}
+      <div className="w-full h-full bg-background text-foreground flex flex-col rounded-2xl overflow-hidden border border-border/50">
+        
+        {/* Header - Shared Shell */}
         <header 
           onMouseDown={handleDrag}
-          className="flex justify-between items-center px-4 h-12 bg-muted/30 border-b border-border select-none cursor-grab active:cursor-grabbing shrink-0"
+          data-tauri-drag-region
+          className="flex justify-between items-center px-5 h-14 bg-muted/40 border-b border-border/40 select-none cursor-grab active:cursor-grabbing shrink-0"
         >
-          <div className="flex items-center gap-2.5 pointer-events-none">
-            <div className="bg-primary/10 p-1.5 rounded-lg text-primary">
-              <Globe className="w-4 h-4" />
+          <div className="flex items-center gap-3 pointer-events-none text-left">
+            <div className="bg-primary/10 p-2 rounded-xl text-primary shadow-sm border border-primary/10">
+              <Globe className="w-4.5 h-4.5" />
             </div>
-            <div className="flex flex-col text-left">
-                <span className="font-black text-xs tracking-widest uppercase opacity-90 leading-none">inFlow</span>
-                {currentInvocation && (
-                    <span className="text-[8px] font-bold text-muted-foreground/60 uppercase tracking-tighter mt-0.5">
-                        {currentInvocation.capabilityId}
-                    </span>
-                )}
+            <div className="flex flex-col">
+                <span className="font-black text-xs tracking-widest uppercase opacity-90">inFlow</span>
+                <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-tighter -mt-0.5 truncate max-w-[200px]">
+                    {currentInvocation?.capabilityId || 'System'}
+                </span>
             </div>
           </div>
           <button
             onClick={handleClose}
             onMouseDown={(e) => e.stopPropagation()}
-            className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all active:scale-90 z-50 relative"
+            className="h-9 w-9 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all active:scale-90 z-50 relative border border-transparent hover:border-destructive/20"
           >
             <X className="w-5 h-5" />
           </button>
         </header>
         
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col p-4 overflow-hidden min-h-0 bg-gradient-to-b from-transparent to-muted/5">
+        {/* Content Area */}
+        <div className="flex-1 flex flex-col p-5 overflow-hidden min-h-0 bg-gradient-to-b from-transparent to-muted/5">
           {renderContent()}
         </div>
         
-        {/* Footer - Fixed 32px */}
-        <footer className="px-5 h-8 bg-muted/20 border-t border-border/40 flex justify-between items-center shrink-0">
-          <div className="flex items-center gap-2 text-muted-foreground/60">
-            <div className="w-1 h-1 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)] animate-pulse" />
-            <span className="text-[8px] font-black uppercase tracking-[0.2em]">Ready</span>
+        {/* Shared Footer */}
+        <footer className="px-6 h-10 bg-muted/30 border-t border-border/40 flex justify-between items-center shrink-0 select-none">
+          <div className="flex items-center gap-2.5">
+            <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_12px_rgba(34,197,94,0.8)] animate-pulse" />
+            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-muted-foreground/60">System Ready</span>
           </div>
-          <span className="text-[8px] font-bold opacity-20 uppercase tracking-widest">v0.1.0</span>
+          <div className="flex items-center gap-1 opacity-20 text-muted-foreground font-black">
+            <span className="text-[9px] uppercase tracking-widest italic">v0.1.0</span>
+          </div>
         </footer>
+      </div>
     </div>
   );
 }

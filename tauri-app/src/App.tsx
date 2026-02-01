@@ -17,6 +17,21 @@ function App() {
       await bootstrap();
     };
     init();
+
+    // Theme detection and synchronization
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const updateTheme = (isDark: boolean) => {
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+    
+    updateTheme(mediaQuery.matches);
+    const handler = (e: MediaQueryListEvent) => updateTheme(e.matches);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
   }, []);
 
   useEffect(() => {

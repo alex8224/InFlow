@@ -12,7 +12,7 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '../../components/ui/select';
-import { translateText, translateTextAiStream, getAppConfig, AppConfig } from '../../integrations/tauri/api';
+import { translateText, translateTextAiStream, getAppConfig, AppConfig, getClipboardText } from '../../integrations/tauri/api';
 import { cn } from '../../lib/cn';
 import { useInvocationStore } from '../../stores/invocationStore';
 
@@ -47,7 +47,7 @@ export function TranslateView() {
     loadConfig();
     
     // Listen for AI streaming tokens
-    const unlisten = listen<string>('translation-token', (event) => {
+    const unlistenToken = listen<string>('translation-token', (event) => {
       setTranslatedText((prev) => prev + event.payload);
       // Auto-scroll to bottom
       if (resultRef.current) {
@@ -55,8 +55,16 @@ export function TranslateView() {
       }
     });
 
+    // Listen for config changes from other windows (e.g. Workspace)
+    const unlistenConfig = listen<AppConfig>('app-config-changed', (event) => {
+      console.log('Config updated from other window:', event.payload);
+      setConfig(event.payload);
+      setActiveService(event.payload.preferredService as 'google' | 'ai');
+    });
+
     return () => {
-      unlisten.then(f => f());
+      unlistenToken.then(f => f());
+      unlistenConfig.then(f => f());
     };
   }, []);
 
@@ -72,16 +80,31 @@ export function TranslateView() {
 
   // Handle Incoming Invocation Context
   useEffect(() => {
-    if (currentInvocation?.capabilityId === 'translate.selection' || currentInvocation?.capabilityId === 'translate.text') {
-      const text = currentInvocation.context?.selectedText;
-      if (text && text !== inputText) {
-        setInputText(text);
-        // Wait for config to load before auto-triggering
-        if (config) {
-            setTimeout(() => handleTranslateInternal(text, fromLang, toLang), 100);
+    const handleInvocation = async () => {
+      if (currentInvocation?.capabilityId === 'translate.selection' || currentInvocation?.capabilityId === 'translate.text') {
+        let text = currentInvocation.context?.selectedText;
+        
+        // 大文本优化：如果链接参数中没有文本，则尝试从剪贴板读取
+        if (!text || text.trim() === "") {
+          try {
+            text = await getClipboardText();
+            console.log('Using clipboard text as fallback for large content');
+          } catch (err) {
+            console.error('Failed to read fallback clipboard text:', err);
+          }
+        }
+
+        if (text && text !== inputText) {
+          setInputText(text);
+          // Wait for config to load before auto-triggering
+          if (config) {
+              handleTranslateInternal(text, fromLang, toLang);
+          }
         }
       }
-    }
+    };
+
+    handleInvocation();
   }, [currentInvocation, config]);
 
   const handleTranslateInternal = async (text: string, from: string, to: string) => {
@@ -235,46 +258,54 @@ export function TranslateView() {
 
       {/* Result Area - Markdown Support */}
       <div 
-        ref={resultRef}
         className={cn(
-            "flex-1 min-h-0 border rounded-2xl p-4 bg-background overflow-auto relative group transition-all duration-300 shadow-sm",
+            "flex-1 min-h-0 border rounded-2xl bg-background relative group transition-all duration-300 shadow-sm overflow-hidden",
             translatedText ? "border-primary/30 ring-1 ring-primary/10" : "border-dashed border-border"
         )}
       >
         {translatedText ? (
-          <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
-            <div className="flex items-center justify-between sticky top-0 bg-background/80 backdrop-blur-sm pb-2 z-10">
-              <div className="flex items-center gap-1.5 opacity-40">
-                <Command className="w-3 h-3 text-primary" />
-                <span className="text-[10px] uppercase tracking-widest font-black text-primary">Result</span>
+          <>
+            {/* Absolute Toolbar */}
+            <div className="absolute top-2 left-4 right-2 flex items-center justify-between z-20 pointer-events-none">
+              <div className="flex items-center gap-1.5 opacity-20 transition-opacity group-hover:opacity-40">
+                <span className="text-[9px] uppercase tracking-[0.2em] font-black text-primary">Result</span>
               </div>
-              <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all scale-95 group-hover:scale-100">
+              <div className="flex gap-1 pointer-events-auto opacity-0 group-hover:opacity-100 transition-all scale-95 group-hover:scale-100 translate-x-1 group-hover:translate-x-0">
                 <Button 
                   onClick={handleCopy} 
-                  variant="secondary" 
+                  variant="ghost" 
                   size="icon" 
-                  className="h-8 w-8 rounded-lg bg-muted border border-border shadow-sm hover:scale-110 transition-all active:scale-90"
+                  className="h-7 w-7 rounded-lg bg-background/50 backdrop-blur-md border border-border/50 shadow-sm hover:bg-background hover:scale-105 transition-all"
                   title="复制译文"
                 >
-                  <Copy className="w-4 h-4" />
+                  <Copy className="w-3.5 h-3.5" />
                 </Button>
                 <Button 
                   onClick={handleClear} 
-                  variant="secondary" 
+                  variant="ghost" 
                   size="icon" 
-                  className="h-8 w-8 rounded-lg bg-muted border border-border shadow-sm hover:scale-110 transition-all active:scale-90 text-destructive hover:text-destructive"
+                  className="h-7 w-7 rounded-lg bg-background/50 backdrop-blur-md border border-border/50 shadow-sm hover:bg-background hover:scale-105 transition-all text-destructive hover:text-destructive"
                   title="清除"
                 >
-                  <RotateCcw className="w-4 h-4" />
+                  <RotateCcw className="w-3.5 h-3.5" />
                 </Button>
               </div>
             </div>
-            <div className="prose prose-sm dark:prose-invert max-w-none text-foreground leading-relaxed font-medium selection:bg-primary/20">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {translatedText}
-              </ReactMarkdown>
+
+            {/* Scrollable Content Area */}
+            <div 
+              ref={resultRef}
+              className="h-full w-full overflow-auto p-4 pt-9 custom-scrollbar"
+            >
+              <div className="animate-in fade-in slide-in-from-top-1">
+                <div className="prose prose-sm dark:prose-invert max-w-none text-foreground leading-relaxed font-medium selection:bg-primary/20">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {translatedText}
+                  </ReactMarkdown>
+                </div>
+              </div>
             </div>
-          </div>
+          </>
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-muted-foreground/30 gap-3 opacity-50 transition-opacity group-hover:opacity-100">
             <div className="p-4 bg-muted/50 rounded-full shadow-inner">

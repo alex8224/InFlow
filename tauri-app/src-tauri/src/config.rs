@@ -86,9 +86,9 @@ impl AppConfig {
                 id: "gemini".to_string(),
                 name: "Google Gemini".to_string(),
                 kind: "Gemini".to_string(),
-                base_url: None,
+                base_url: Some("https://generativelanguage.googleapis.com".to_string()),
                 api_key: "".to_string(),
-                model_id: "gemini-2.0-flash-exp".to_string(),
+                model_id: "gemini-2.0-flash".to_string(),
             },
             LlmProvider {
                 id: "openai".to_string(),
