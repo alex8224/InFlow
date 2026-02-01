@@ -2,9 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 use url::Url;
+use futures::StreamExt;
 
 mod config;
-use config::AppConfig;
+use config::{AppConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -118,18 +119,127 @@ async fn translate_text(
 }
 
 #[tauri::command]
-fn save_api_key(api_key: String, _app: AppHandle) -> Result<bool, String> {
-    let mut config = AppConfig::load();
-    config.set_api_key(api_key);
-    config.save().map_err(|e| e.to_string())?;
-    Ok(true)
+async fn translate_text_ai_stream(
+    text: String,
+    from_lang: String,
+    to_lang: String,
+    app: AppHandle,
+) -> Result<(), String> {
+    let config = AppConfig::load();
+    let provider = config.llm_providers.iter()
+        .find(|p| Some(&p.id) == config.active_provider_id.as_ref())
+        .ok_or_else(|| "未找到激活的 AI 提供商".to_string())?;
+
+    if provider.api_key.is_empty() {
+        return Err("请先在设置中配置 API Key".to_string());
+    }
+
+    let client = reqwest::Client::new();
+    
+    if provider.kind.to_lowercase() == "gemini" {
+        // Google Gemini API Style
+        let api_url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?key={}",
+            provider.model_id, provider.api_key
+        );
+        
+        let payload = serde_json::json!({
+            "contents": [{
+                "parts": [{
+                    "text": format!("Translate to {}: {}", to_lang, text)
+                }]
+            }]
+        });
+
+        let mut response_stream = client
+            .post(api_url)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| format!("Gemini 请求失败: {}", e))?
+            .bytes_stream();
+
+        while let Some(chunk_result) = response_stream.next().await {
+            let chunk = chunk_result.map_err(|e| format!("流读取失败: {}", e))?;
+            let text_chunk = String::from_utf8_lossy(&chunk);
+            
+            // Gemini returns chunks of JSON objects in an array or individual objects
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text_chunk) {
+                 if let Some(parts) = json["candidates"][0]["content"]["parts"].as_array() {
+                     for part in parts {
+                         if let Some(t) = part["text"].as_str() {
+                             let _ = app.emit("translation-token", t);
+                         }
+                     }
+                 }
+            }
+        }
+    } else {
+        // OpenAI Compatible Style (DeepSeek, SiliconFlow, Volcengine, Minimax, etc.)
+        let base_url = provider.base_url.as_ref().ok_or("OpenAI 协议需要配置 Base URL")?;
+        let api_url = if base_url.ends_with("/chat/completions") {
+            base_url.clone()
+        } else {
+            format!("{}/chat/completions", base_url.trim_end_matches('/'))
+        };
+
+        let payload = serde_json::json!({
+            "model": provider.model_id,
+            "messages": [
+                { "role": "system", "content": "You are a professional translator. Only provide translated text." },
+                { "role": "user", "content": format!("Translate from {} to {}: {}", from_lang, to_lang, text) }
+            ],
+            "stream": true
+        });
+
+        let mut response_stream = client
+            .post(api_url)
+            .header("Authorization", format!("Bearer {}", provider.api_key))
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| format!("AI 请求失败: {}", e))?
+            .bytes_stream();
+
+        while let Some(chunk_result) = response_stream.next().await {
+            let chunk = chunk_result.map_err(|e| format!("流读取失败: {}", e))?;
+            let text_chunk = String::from_utf8_lossy(&chunk);
+            
+            for line in text_chunk.lines() {
+                let line = line.trim();
+                if line.is_empty() { continue; }
+                if let Some(data) = line.strip_prefix("data: ") {
+                    if data == "[DONE]" { break; }
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                        if let Some(content) = json["choices"][0]["delta"]["content"].as_str() {
+                            let _ = app.emit("translation-token", content);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn get_app_config() -> Result<AppConfig, String> {
+    Ok(AppConfig::load())
+}
+
+#[tauri::command]
+fn update_app_config(config: AppConfig) -> Result<(), String> {
+    config.save()
 }
 
 #[tauri::command]
 fn get_api_key_status(_app: AppHandle) -> Result<serde_json::Value, String> {
+    let config = AppConfig::load();
     Ok(serde_json::json!({
         "hasKey": true,
-        "isValid": true
+        "isValid": true,
+        "preferredService": config.preferred_service
     }))
 }
 
@@ -145,7 +255,7 @@ fn execute_capability(
     let invocation_ui: Option<InvocationUi> = ui.map(|u| serde_json::from_value(u).unwrap());
     let invocation = Invocation {
         id: uuid::Uuid::new_v4().to_string(),
-        capability_id,
+        capability_id: capability_id.clone(),
         args,
         context: context.map(|ctx| serde_json::from_value(ctx).unwrap()),
         source: "internal".to_string(),
@@ -153,7 +263,6 @@ fn execute_capability(
         created_at: chrono::Utc::now().timestamp(),
     };
 
-    // Store in state
     let mut current = state.current_invocation.lock().unwrap();
     *current = Some(invocation.clone());
 
@@ -237,7 +346,6 @@ fn handle_deep_link(app: &AppHandle, url: String) {
                 created_at: chrono::Utc::now().timestamp(),
             };
 
-            // Update state in app handle
             let state = app.state::<AppState>();
             let mut current = state.current_invocation.lock().unwrap();
             *current = Some(invocation.clone());
@@ -282,7 +390,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             translate_text,
-            save_api_key,
+            translate_text_ai_stream,
+            get_app_config,
+            update_app_config,
             get_api_key_status,
             execute_capability,
             get_current_invocation,

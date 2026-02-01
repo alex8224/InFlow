@@ -11,9 +11,12 @@ function App() {
   const currentInvocation = useInvocationStore((state) => state.currentInvocation);
 
   useEffect(() => {
-    const currentWindow = getCurrentWindow();
-    setWindowLabel(currentWindow.label);
-    bootstrap();
+    const init = async () => {
+      const currentWindow = getCurrentWindow();
+      setWindowLabel(currentWindow.label);
+      await bootstrap();
+    };
+    init();
   }, []);
 
   useEffect(() => {
