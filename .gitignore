@@ -1,6 +1,7 @@
 tauri-app/node_modules/
 tauri-app/src-tauri/target/
+tauri-app/target/
 tauri-app/dist/
+tauri-app/config.json
 .DS_Store
 *.log
-

@@ -56,6 +56,15 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
     --radius: 0.75rem;
+
+    /* Code blocks (light) */
+    --code-bg: #f5f2f0;
+    --code-fg: #111827;
+    --code-border: rgba(15, 23, 42, 0.10);
+    --code-border-strong: rgba(15, 23, 42, 0.14);
+    --code-header-fg: rgba(15, 23, 42, 0.50);
+    --code-button-bg: rgba(255, 255, 255, 0.65);
+    --code-button-border: rgba(15, 23, 42, 0.12);
   }
 
   .dark {
@@ -78,7 +87,99 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
+
+    /* Code blocks (dark - monokai/okaidia-ish) */
+    --code-bg: #272822;
+    --code-fg: #f8f8f2;
+    --code-border: rgba(255, 255, 255, 0.10);
+    --code-border-strong: rgba(255, 255, 255, 0.14);
+    --code-header-fg: rgba(248, 248, 242, 0.55);
+    --code-button-bg: rgba(20, 20, 20, 0.55);
+    --code-button-border: rgba(255, 255, 255, 0.14);
   }
+}
+
+/* Code fence layout + theme bridging for Prism */
+.code-fence {
+  background: var(--code-bg);
+  border-color: var(--code-border);
+}
+
+.code-fence > div {
+  border-color: var(--code-border);
+  color: var(--code-header-fg);
+  background: transparent;
+}
+
+.code-fence button {
+  background: var(--code-button-bg);
+  border-color: var(--code-button-border);
+}
+
+.code-fence pre[class*="language-"] {
+  margin: 0;
+  background: transparent !important;
+  text-shadow: none;
+  color: var(--code-fg);
+}
+
+.code-fence code[class*="language-"] {
+  background: transparent !important;
+  text-shadow: none;
+}
+
+/* Dark token colors to approximate okaidia */
+.dark .code-fence .token.comment,
+.dark .code-fence .token.prolog,
+.dark .code-fence .token.doctype,
+.dark .code-fence .token.cdata {
+  color: #75715e;
+}
+
+.dark .code-fence .token.punctuation {
+  color: #f8f8f2;
+}
+
+.dark .code-fence .token.property,
+.dark .code-fence .token.tag,
+.dark .code-fence .token.constant,
+.dark .code-fence .token.symbol,
+.dark .code-fence .token.deleted,
+.dark .code-fence .token.number,
+.dark .code-fence .token.boolean {
+  color: #ae81ff;
+}
+
+.dark .code-fence .token.selector,
+.dark .code-fence .token.attr-name,
+.dark .code-fence .token.string,
+.dark .code-fence .token.char,
+.dark .code-fence .token.builtin,
+.dark .code-fence .token.inserted {
+  color: #e6db74;
+}
+
+.dark .code-fence .token.operator,
+.dark .code-fence .token.entity,
+.dark .code-fence .token.url,
+.dark .code-fence .token.variable {
+  color: #f8f8f2;
+}
+
+.dark .code-fence .token.atrule,
+.dark .code-fence .token.attr-value,
+.dark .code-fence .token.keyword {
+  color: #f92672;
+}
+
+.dark .code-fence .token.function,
+.dark .code-fence .token.class-name {
+  color: #a6e22e;
+}
+
+.dark .code-fence .token.regex,
+.dark .code-fence .token.important {
+  color: #fd971f;
 }
 
 @layer utilities {

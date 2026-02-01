@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Copy, RotateCcw, Settings, ArrowRight, Command, Globe, Languages, Sparkles, Zap } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { Copy, RotateCcw, ArrowRight, Globe, Languages, Sparkles } from 'lucide-react';
+import { RichMarkdown } from '../../components/blocks/RichMarkdown';
 import { listen } from '@tauri-apps/api/event';
 import { Button } from '../../components/ui/button';
 import { Textarea } from '../../components/ui/textarea';
@@ -280,11 +279,10 @@ export function TranslateView() {
               className="h-full w-full overflow-auto p-4 pt-9 custom-scrollbar"
             >
               <div className="animate-in fade-in slide-in-from-top-1">
-                <div className="prose prose-sm dark:prose-invert max-w-none text-foreground leading-relaxed font-medium selection:bg-primary/20">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {translatedText}
-                  </ReactMarkdown>
-                </div>
+                <RichMarkdown
+                  className="text-foreground leading-relaxed font-medium selection:bg-primary/20"
+                  markdown={translatedText}
+                />
               </div>
             </div>
           </>

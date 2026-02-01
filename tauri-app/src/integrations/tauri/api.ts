@@ -1,12 +1,21 @@
 import { invoke } from '@tauri-apps/api/core';
-import { Invocation } from '../../core/types';
 
 export interface LlmProvider {
   id: string;
   name: string;
-  baseUrl: string;
+  kind: string;
+  baseUrl?: string | null;
   apiKey: string;
   modelId: string;
+}
+
+export interface McpRemoteServer {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  headers?: Record<string, string> | null;
+  toolsAllowlist?: string[] | null;
 }
 
 export interface AppConfig {
@@ -14,6 +23,19 @@ export interface AppConfig {
   llmProviders: LlmProvider[];
   activeProviderId: string | null;
   preferredService: string;
+  mcpRemoteServers?: McpRemoteServer[];
+}
+
+export async function chatSessionCreate(): Promise<{ sessionId: string }> {
+  return await invoke('chat_session_create');
+}
+
+export async function chatStream(sessionId: string, providerId: string, userText: string): Promise<void> {
+  await invoke('chat_stream', { sessionId, providerId, userText });
+}
+
+export async function chatCancel(sessionId: string): Promise<void> {
+  await invoke('chat_cancel', { sessionId });
 }
 
 export async function executeCapability(

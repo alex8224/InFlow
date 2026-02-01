@@ -5,6 +5,7 @@ import { Invocation } from '../core/types';
 import { useInvocationStore } from '../stores/invocationStore';
 import { viewRegistry } from '../core/registry/viewRegistry';
 import { TranslateView } from '../surfaces/overlay/TranslateView';
+import { ChatOverlayView } from '../surfaces/overlay/ChatOverlayView';
 import { SettingsView } from '../surfaces/workspace/SettingsView';
 
 export async function setupEventListeners() {
@@ -48,6 +49,15 @@ export async function bootstrap() {
       name: 'Settings',
       component: SettingsView,
       capabilityIds: ['app.settings'],
+    });
+  }
+
+  if (!viewRegistry.has('chat-overlay-view')) {
+    viewRegistry.register({
+      id: 'chat-overlay-view',
+      name: 'Chat',
+      component: ChatOverlayView,
+      capabilityIds: ['chat.overlay'],
     });
   }
 
