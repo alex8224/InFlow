@@ -333,6 +333,9 @@ export function ChatOverlayView() {
     setStreaming(true);
 
     autoScrollRef.current = true;
+    if (listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
 
     if (debugStreamRef.current) {
       const runId = `run_${Date.now()}_${Math.random().toString(16).slice(2)}`;
