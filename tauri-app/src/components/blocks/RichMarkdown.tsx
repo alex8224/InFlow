@@ -3,7 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { Copy, Check } from 'lucide-react';
+import rehypeRaw from 'rehype-raw';
+import { Copy, Check, Maximize, X } from 'lucide-react';
 import 'prismjs/themes/prism.css';
 import 'katex/dist/katex.min.css';
 import * as PrismNS from 'prismjs';
@@ -249,6 +250,57 @@ function CodeFence({ language, code }: { language?: string; code: string }) {
   );
 }
 
+function SvgBlock({ code }: { code: string }) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  return (
+    <>
+      <div className="rounded-xl border border-border/60 bg-background/60 overflow-hidden relative group">
+        <div
+          className="p-3 overflow-auto flex justify-center bg-white/5"
+          dangerouslySetInnerHTML={{ __html: code }}
+          style={{ maxWidth: '100%' }}
+        />
+        <button
+          type="button"
+          onClick={() => setIsModalOpen(true)}
+          className="absolute bottom-2 right-2 h-8 w-8 rounded-lg bg-background/90 border border-border/60 shadow-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-background"
+          title="放大查看"
+        >
+          <Maximize className="w-4 h-4" />
+        </button>
+      </div>
+
+      {isModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm p-8"
+          onClick={() => setIsModalOpen(false)}
+        >
+          <div className="relative max-w-[95vw] max-h-[90vh] w-full h-full flex items-center justify-center">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="absolute top-4 right-4 h-10 w-10 rounded-full bg-background border border-border/60 shadow-lg flex items-center justify-center hover:bg-accent transition-colors z-10"
+              title="关闭"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div
+              className="w-full h-full flex items-center justify-center overflow-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                dangerouslySetInnerHTML={{ __html: code }}
+                style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto' }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function MermaidBlock({ code }: { code: string }) {
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -260,8 +312,6 @@ function MermaidBlock({ code }: { code: string }) {
     const seq = (renderSeqRef.current += 1);
     setError(null);
 
-    // Streaming markdown can update the same mermaid fence many times.
-    // Debounce rendering to avoid constant re-render/flicker and heavy layout thrash.
     const timer = setTimeout(() => {
       (async () => {
         await ensureMermaidInitialized();
@@ -308,7 +358,7 @@ export function RichMarkdown({ markdown, className }: { markdown: string; classN
     <div className={cn('prose prose-sm dark:prose-invert max-w-none', className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[rehypeRaw, rehypeKatex]}
         components={{
           // Block code: react-markdown renders ``` fences as <pre><code ...>...</code></pre>
           // We render the whole block at the <pre> level to avoid invalid nesting.
@@ -325,6 +375,10 @@ export function RichMarkdown({ markdown, className }: { markdown: string; classN
 
             if (lang?.toLowerCase() === 'mermaid') {
               return <MermaidBlock code={code} />;
+            }
+
+            if (lang?.toLowerCase() === 'svg') {
+              return <SvgBlock code={code} />;
             }
 
             return <CodeFence language={lang} code={code} />;

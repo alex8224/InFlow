@@ -126,6 +126,7 @@ pub struct ChatErrorEvent {
 #[derive(Debug, Clone)]
 pub struct ChatSession {
     pub messages: Vec<ChatMessage>,
+    pub mcp_enabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -929,6 +930,7 @@ fn chat_session_create(state: State<'_, AppState>) -> Result<ChatSessionCreateRe
             session_id.clone(),
             ChatSession {
                 messages: Vec::new(),
+                mcp_enabled: false,
             },
         );
     }
@@ -995,7 +997,10 @@ async fn chat_stream(
         let mut sessions = state.chat_sessions.lock().unwrap();
         sessions
             .entry(session_id.clone())
-            .or_insert(ChatSession { messages: Vec::new() });
+            .or_insert(ChatSession {
+                messages: Vec::new(),
+                mcp_enabled: false,
+            });
     }
 
     // Append user message
@@ -1013,7 +1018,12 @@ async fn chat_stream(
 
     // MCP tools (e.g. Exa web search) can add extra roundtrips and feel "laggy".
     // Keep chat fast by default and only enable tools when explicitly requested.
-    let enable_mcp = should_enable_mcp_tools_for_chat(&user_text);
+    let session_enabled = {
+        let sessions = state.chat_sessions.lock().unwrap();
+        sessions.get(&session_id).map(|s| s.mcp_enabled).unwrap_or(false)
+    };
+    let text_enabled = should_enable_mcp_tools_for_chat(&user_text);
+    let enable_mcp = session_enabled || text_enabled;
 
     let mut genai_tools: Vec<Tool> = Vec::new();
     let mut server_map: HashMap<String, McpRemoteServer> = HashMap::new();
@@ -1368,6 +1378,7 @@ async fn chat_stream(
                     session
                         .messages
                         .push(ChatMessage::from(ToolResponse::new(tc.call_id, content_str)));
+                    session.mcp_enabled = true;
                 }
                 Err(err) => {
                     let _ = app.emit(
