@@ -332,6 +332,10 @@ export function ChatOverlayView() {
     activeAssistantMessageId.current = assistantId;
     setStreaming(true);
 
+    if (listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
+
     if (debugStreamRef.current) {
       const runId = `run_${Date.now()}_${Math.random().toString(16).slice(2)}`;
       const startedAtIso = new Date().toISOString();
