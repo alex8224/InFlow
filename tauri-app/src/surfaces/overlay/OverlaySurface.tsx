@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
-import { X, Globe, Zap, Sparkles, Bot, Plus, Trash2, Square } from 'lucide-react';
+import { X, Globe, Zap, Sparkles, Bot, Plus, Trash2, Square, Pin, PinOff } from 'lucide-react';
 import { chatCancel, chatSessionCreate, getAppConfig, AppConfig } from '../../integrations/tauri/api';
 import { cn } from '../../lib/cn';
 import { useInvocationStore } from '../../stores/invocationStore';
@@ -21,6 +21,7 @@ export function OverlaySurface() {
   const setActiveService = useInvocationStore((state) => state.setActiveService);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [isPinned, setIsPinned] = useState(false);
 
   const chatSessionId = useChatStore((s) => s.sessionId);
   const chatSessionProviderId = useChatStore((s) => s.sessionProviderId);
@@ -38,7 +39,13 @@ export function OverlaySurface() {
       .isMaximized()
       .then(setIsMaximized)
       .catch(() => setIsMaximized(false));
-    
+
+    // Cache pinned state for styling.
+    getCurrentWindow()
+      .isAlwaysOnTop()
+      .then(setIsPinned)
+      .catch(() => setIsPinned(false));
+
     // Listen for config changes
     const unlistenConfig = listen<AppConfig>('app-config-changed', (event) => {
       setConfig(event.payload);
@@ -113,6 +120,18 @@ export function OverlaySurface() {
     e.preventDefault();
     e.stopPropagation();
     await getCurrentWindow().hide();
+  };
+
+  const handlePin = async () => {
+    try {
+      const win = getCurrentWindow();
+      const current = await win.isAlwaysOnTop();
+      const newStatus = !current;
+      await win.setAlwaysOnTop(newStatus);
+      setIsPinned(newStatus);
+    } catch (err) {
+      console.error('Failed to toggle pin:', err);
+    }
   };
 
   const renderContent = () => {
@@ -277,6 +296,19 @@ export function OverlaySurface() {
           )}
 
           <div className="flex items-center gap-2 z-50 relative">
+            <button
+              onClick={handlePin}
+              onMouseDown={(e) => e.stopPropagation()}
+              className={cn(
+                "h-9 w-9 flex items-center justify-center rounded-xl transition-all active:scale-90 border border-transparent",
+                isPinned
+                  ? "text-primary bg-primary/10 hover:bg-primary/20"
+                  : "text-muted-foreground hover:bg-muted/40 hover:text-foreground hover:border-border/40"
+              )}
+              title={isPinned ? "Unpin (restore positioning)" : "Pin (keep on top)"}
+            >
+              {isPinned ? <Pin className="w-4.5 h-4.5 fill-current" /> : <PinOff className="w-4.5 h-4.5" />}
+            </button>
             {isChat && (
               <>
                 <button

@@ -22,10 +22,9 @@
         "label": "overlay",
         "title": "inFlow 翻译",
         "width": 480,
-        "height": 580,
+        "height":580,
         "resizable": true,
         "decorations": false,
-        "alwaysOnTop": true,
         "skipTaskbar": true,
         "visible": false,
         "transparent": true
