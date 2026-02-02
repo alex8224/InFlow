@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { Copy, Check } from 'lucide-react';
 import 'prismjs/themes/prism.css';
+import 'katex/dist/katex.min.css';
 import * as PrismNS from 'prismjs';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-typescript';
@@ -23,6 +26,145 @@ import { cn } from '../../lib/cn';
 type MermaidRenderResult = { svg: string };
 
 type HighlightResult = { html: string; language: string };
+
+function splitByFencedCodeBlocks(markdown: string): Array<{ kind: 'text' | 'fence'; value: string }> {
+  const out: Array<{ kind: 'text' | 'fence'; value: string }> = [];
+  const s = markdown;
+  const n = s.length;
+  let i = 0;
+
+  const isLineStart = (idx: number) => idx === 0 || s[idx - 1] === '\n';
+
+  const findFenceStart = (from: number) => {
+    let j = from;
+    while (j < n) {
+      const k = s.indexOf('```', j);
+      if (k === -1) return -1;
+      if (isLineStart(k)) return k;
+      j = k + 3;
+    }
+    return -1;
+  };
+
+  const findFenceEnd = (from: number) => {
+    let j = from;
+    while (j < n) {
+      const k = s.indexOf('```', j);
+      if (k === -1) return -1;
+      if (isLineStart(k)) {
+        const lineEnd = s.indexOf('\n', k);
+        return lineEnd === -1 ? n : lineEnd + 1;
+      }
+      j = k + 3;
+    }
+    return -1;
+  };
+
+  while (i < n) {
+    const start = findFenceStart(i);
+    if (start === -1) {
+      out.push({ kind: 'text', value: s.slice(i) });
+      break;
+    }
+
+    if (start > i) out.push({ kind: 'text', value: s.slice(i, start) });
+
+    const afterStartLine = s.indexOf('\n', start);
+    if (afterStartLine === -1) {
+      out.push({ kind: 'fence', value: s.slice(start) });
+      break;
+    }
+
+    const end = findFenceEnd(afterStartLine + 1);
+    if (end === -1) {
+      out.push({ kind: 'fence', value: s.slice(start) });
+      break;
+    }
+    out.push({ kind: 'fence', value: s.slice(start, end) });
+    i = end;
+  }
+
+  return out;
+}
+
+function transformMathInPlainTextSegment(text: string): string {
+  // Option 1: prefer \( ... \) and \[ ... \] and avoid $...$ ambiguities.
+  // Keep existing $...$ / $$...$$ working (many models output it).
+  let t = text;
+
+  // Block math: \[ ... \] -> $$ ... $$
+  // Add newlines around to keep it a proper block.
+  t = t.replace(/\\\[([\s\S]*?)\\\]/g, (_m, inner: string) => {
+    const body = String(inner ?? '').trim();
+    return `\n$$\n${body}\n$$\n`;
+  });
+
+  // Inline math: \( ... \) -> $ ... $
+  t = t.replace(/\\\(([\s\S]*?)\\\)/g, (_m, inner: string) => {
+    const body = String(inner ?? '').trim();
+    return `$${body}$`;
+  });
+
+  return t;
+}
+
+function normalizeMathMarkdown(markdown: string): string {
+  const parts = splitByFencedCodeBlocks(markdown);
+  let out = '';
+
+  for (const part of parts) {
+    if (part.kind === 'fence') {
+      out += part.value;
+      continue;
+    }
+
+    const s = part.value;
+    let i = 0;
+    let inInline = false;
+    let delim = '';
+    let buf = '';
+
+    const flush = () => {
+      if (!buf) return;
+      out += transformMathInPlainTextSegment(buf);
+      buf = '';
+    };
+
+    while (i < s.length) {
+      const ch = s[i];
+      if (!inInline) {
+        if (ch === '`') {
+          flush();
+          let j = i;
+          while (j < s.length && s[j] === '`') j++;
+          delim = s.slice(i, j);
+          out += delim;
+          inInline = true;
+          i = j;
+          continue;
+        }
+        buf += ch;
+        i++;
+        continue;
+      }
+
+      // In inline code: emit raw until closing backticks.
+      if (delim && s.startsWith(delim, i)) {
+        out += s.slice(i, i + delim.length);
+        i += delim.length;
+        inInline = false;
+        delim = '';
+        continue;
+      }
+      out += ch;
+      i++;
+    }
+
+    flush();
+  }
+
+  return out;
+}
 
 function normalizeLanguage(lang?: string) {
   const l = (lang || '').toLowerCase();
@@ -161,10 +303,12 @@ function MermaidBlock({ code }: { code: string }) {
 }
 
 export function RichMarkdown({ markdown, className }: { markdown: string; className?: string }) {
+  const normalized = useMemo(() => normalizeMathMarkdown(markdown), [markdown]);
   return (
     <div className={cn('prose prose-sm dark:prose-invert max-w-none', className)}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
         components={{
           // Block code: react-markdown renders ``` fences as <pre><code ...>...</code></pre>
           // We render the whole block at the <pre> level to avoid invalid nesting.
@@ -199,7 +343,7 @@ export function RichMarkdown({ markdown, className }: { markdown: string; classN
           },
         }}
       >
-        {markdown}
+        {normalized}
       </ReactMarkdown>
     </div>
   );

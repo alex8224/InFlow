@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
 import { X, Globe, Zap, Sparkles, Bot, Plus, Trash2, Square } from 'lucide-react';
-import { chatCancel, chatSessionCreate, closeOverlay, getAppConfig, AppConfig } from '../../integrations/tauri/api';
+import { chatCancel, chatSessionCreate, getAppConfig, AppConfig } from '../../integrations/tauri/api';
 import { cn } from '../../lib/cn';
 import { useInvocationStore } from '../../stores/invocationStore';
 import { useChatStore } from '../../stores/chatStore';
@@ -45,9 +45,9 @@ export function OverlaySurface() {
     });
 
     // Global ESC key listener to close overlay
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        closeOverlay();
+        await getCurrentWindow().hide();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -112,7 +112,7 @@ export function OverlaySurface() {
   const handleClose = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    await closeOverlay();
+    await getCurrentWindow().hide();
   };
 
   const renderContent = () => {

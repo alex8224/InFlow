@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewWindowBuilder, WebviewUrl};
 use url::Url;
 use futures::StreamExt;
 
@@ -43,9 +43,12 @@ pub struct InvocationContext {
 #[serde(rename_all = "camelCase")]
 pub struct InvocationUi {
     pub mode: Option<String>,
+    pub instance_id: Option<String>,
+    pub reuse: Option<String>,
     pub focus: Option<bool>,
     pub position: Option<String>,
     pub auto_close: Option<bool>,
+    pub target_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +60,15 @@ pub struct Invocation {
     pub context: Option<InvocationContext>,
     pub source: String,
     pub ui: Option<InvocationUi>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PetEvent {
+    pub id: String,
+    pub event_type: String, // "notify" | "action"
+    pub payload: serde_json::Value,
     pub created_at: i64,
 }
 
@@ -140,7 +152,9 @@ pub struct CachedMcpTools {
 }
 
 pub struct AppState {
-    pub current_invocation: Mutex<Option<Invocation>>,
+    pub invocations_by_label: Mutex<HashMap<String, Invocation>>,
+    pub pet_queue_by_label: Mutex<HashMap<String, VecDeque<PetEvent>>>,
+    pub last_active_by_type: Mutex<HashMap<String, String>>,
     pub chat_sessions: Mutex<HashMap<String, ChatSession>>,
     pub chat_cancel_flags: Mutex<HashMap<String, Arc<AtomicBool>>>,
     pub mcp_tools_cache: Mutex<HashMap<String, CachedMcpTools>>,
@@ -1389,6 +1403,159 @@ async fn chat_stream(
     }
 }
 
+fn resolve_target_window(
+    state: &AppState,
+    mode: &str,
+    instance_id: Option<&str>,
+    reuse: Option<&str>,
+) -> Result<(String, String), String> {
+    println!("[resolve_target] mode={} instance_id={:?} reuse={:?}", mode, instance_id, reuse);
+    // 1. Resolve Window Type from Mode
+    let window_type = if mode.starts_with("window.") {
+        mode.strip_prefix("window.").unwrap().to_string()
+    } else if mode.starts_with("workspace.") {
+        "main".to_string()
+    } else if mode.starts_with("pet.") {
+        "pet".to_string()
+    } else {
+        match mode {
+             "translate" => "translate".to_string(),
+             "chat" => "chat".to_string(),
+             "overlay" => "overlay".to_string(),
+             "pet" => "pet".to_string(),
+             "main" => "main".to_string(),
+             _ => return Err(format!("Unknown mode: {}", mode)),
+        }
+    };
+
+    // 2. Resolve Label based on instance_id and reuse strategy
+    let reuse_strategy = reuse.unwrap_or("active-or-new");
+    let default_instance_id = "default";
+    
+    // DEBUG LOG
+    println!("[resolve_target] mode={} instance_id={:?} reuse={}", mode, instance_id, reuse_strategy);
+
+    let label = if reuse_strategy == "new" {
+
+        // Always new, generate ID if not provided
+        let id = instance_id.map(|s| s.to_string()).unwrap_or_else(|| uuid::Uuid::new_v4().to_string().chars().take(8).collect());
+        format!("{}-{}", window_type, id)
+    } else if reuse_strategy == "active-or-new" {
+        if let Some(inst) = instance_id {
+             format!("{}-{}", window_type, inst)
+        } else {
+            // Check last active
+            let last_active = state.last_active_by_type.lock().unwrap().get(&window_type).cloned();
+            last_active.unwrap_or_else(|| format!("{}-{}", window_type, default_instance_id))
+        }
+    } else {
+        // "reuse" or default fallback
+        let id = instance_id.unwrap_or(default_instance_id);
+        format!("{}-{}", window_type, id)
+    };
+
+    Ok((window_type, label))
+}
+
+fn ensure_window(app: &AppHandle, label: &str, window_type: &str) -> Result<tauri::WebviewWindow, String> {
+    println!("[ensure_window] Checking window: label={} type={}", label, window_type);
+    if let Some(win) = app.get_webview_window(label) {
+        println!("[ensure_window] Window exists: {}", label);
+        return Ok(win);
+    }
+
+    println!("[ensure_window] Creating new window: {}", label);
+    // Create new window based on type template
+    let mut builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()));
+    
+    // Apply type-specific config
+    match window_type {
+        "translate" | "chat" => {
+            builder = builder
+                .title(window_type)
+                .inner_size(480.0, 600.0)
+                .decorations(false)
+                .transparent(true) 
+                .shadow(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .visible(false); 
+        },
+        "pet" => {
+            builder = builder
+                .title("Pet")
+                .inner_size(300.0, 300.0)
+                .decorations(false)
+                .resizable(false) // Crucial for removing Windows borders on transparent windows
+                .transparent(true)
+                .shadow(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .visible(false); 
+        },
+         "overlay" => {
+             builder = builder
+                .inner_size(480.0, 580.0)
+                .decorations(false)
+                .transparent(true)
+                .shadow(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .visible(false);
+         },
+
+        "pet" => {
+            builder = builder
+                .title("Pet")
+                .inner_size(300.0, 300.0)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .visible(true); 
+        },
+         "overlay" => {
+             builder = builder
+                .inner_size(480.0, 580.0)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .visible(false);
+         },
+         "main" => {
+             builder = builder
+                .title("inFlow Workspace")
+                .inner_size(1200.0, 800.0);
+         }
+        _ => {
+             builder = builder.title(window_type);
+        }
+    }
+
+    builder.build().map_err(|e| e.to_string())
+}
+
+fn show_window_by_label(app: &AppHandle, label: &str, focus: bool) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window(label) {
+        if win.is_minimized().unwrap_or(false) {
+            let _ = win.unminimize();
+        }
+        let _ = win.show();
+        if focus {
+            let _ = win.set_focus();
+        }
+        
+        let state = app.state::<AppState>();
+        let parts: Vec<&str> = label.splitn(2, '-').collect();
+        if parts.len() == 2 {
+            let window_type = parts[0];
+            state.last_active_by_type.lock().unwrap().insert(window_type.to_string(), label.to_string());
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn get_api_key_status(_app: AppHandle) -> Result<serde_json::Value, String> {
     let config = AppConfig::load();
@@ -1408,45 +1575,80 @@ fn execute_capability(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let invocation_ui: Option<InvocationUi> = ui.map(|u| serde_json::from_value(u).unwrap());
+    let mut invocation_ui: Option<InvocationUi> = ui.map(|u| serde_json::from_value(u).unwrap());
+    
+    let mode = invocation_ui.as_ref().and_then(|u| u.mode.clone()).ok_or("ui.mode is required")?;
+
+    let instance_id = invocation_ui.as_ref().and_then(|u| u.instance_id.as_deref());
+    let reuse = invocation_ui.as_ref().and_then(|u| u.reuse.as_deref());
+    
+    let (window_type, label) = resolve_target_window(&state, &mode, instance_id, reuse)?;
+    
+    if let Some(ui) = &mut invocation_ui {
+        ui.target_label = Some(label.clone());
+    }
+
     let invocation = Invocation {
         id: uuid::Uuid::new_v4().to_string(),
         capability_id: capability_id.clone(),
         args,
         context: context.map(|ctx| serde_json::from_value(ctx).unwrap()),
         source: "internal".to_string(),
-        ui: invocation_ui,
+        ui: invocation_ui.clone(),
         created_at: chrono::Utc::now().timestamp(),
     };
 
-    let mut current = state.current_invocation.lock().unwrap();
-    *current = Some(invocation.clone());
+    {
+        let mut invocations = state.invocations_by_label.lock().unwrap();
+        invocations.insert(label.clone(), invocation.clone());
+    }
 
-    app.emit("app://invocation", invocation)
-        .map_err(|e: tauri::Error| e.to_string())?;
+    app.emit("app://invocation", invocation).map_err(|e| e.to_string())?;
+
+    let _ = ensure_window(&app, &label, &window_type)?;
+    
+    let focus = invocation_ui.as_ref().and_then(|u| u.focus).unwrap_or_else(|| {
+        match window_type.as_str() {
+            "translate" | "chat" => true,
+            "pet" => false,
+            _ => true,
+        }
+    });
+
+    show_window_by_label(&app, &label, focus)?;
+
     Ok(())
 }
 
 #[tauri::command]
-fn get_current_invocation(state: State<'_, AppState>) -> Option<Invocation> {
-    state.current_invocation.lock().unwrap().clone()
+fn get_current_invocation(state: State<'_, AppState>, label: Option<String>) -> Option<Invocation> {
+    if let Some(l) = &label {
+        println!("[get_current_invocation] Fetching for label: {}", l);
+    } else {
+        println!("[get_current_invocation] Fetching with NO label (legacy)");
+    }
+    
+    let invocations = state.invocations_by_label.lock().unwrap();
+    if let Some(l) = label {
+        let res = invocations.get(&l).cloned();
+        if res.is_some() {
+            println!("[get_current_invocation] Found data for {}", l);
+        } else {
+            println!("[get_current_invocation] No data for {}", l);
+        }
+        res
+    } else {
+        None
+    }
 }
 
 #[tauri::command]
 fn show_overlay(app: AppHandle) -> Result<(), String> {
+    // Backward compatibility or legacy overlay
     if let Some(overlay) = app.get_webview_window("overlay") {
-        // On Windows with skipTaskbar=true, a minimized window is effectively "lost".
-        // Ensure we restore it before showing/focusing.
-        if overlay
-            .is_minimized()
-            .map_err(|e: tauri::Error| e.to_string())?
-        {
-            overlay
-                .unminimize()
-                .map_err(|e: tauri::Error| e.to_string())?;
+        if overlay.is_minimized().map_err(|e: tauri::Error| e.to_string())? {
+            overlay.unminimize().map_err(|e: tauri::Error| e.to_string())?;
         }
-
-        // Re-assert these flags in case the OS toggled state.
         let _ = overlay.set_always_on_top(true);
         overlay.show().map_err(|e: tauri::Error| e.to_string())?;
         overlay.set_focus().map_err(|e: tauri::Error| e.to_string())?;
@@ -1499,16 +1701,48 @@ fn handle_deep_link(app: &AppHandle, url: String) {
             let mut capability_id = "translate.selection".to_string();
             let mut selected_text = None;
             let mut args = serde_json::Map::new();
+            
+            // New routing params
+            let mut mode = None;
+            let mut instance_id = None;
+            let mut reuse = None;
+            let mut focus = Some(true);
 
             for (key, value) in parsed_url.query_pairs() {
                 match key.as_ref() {
                     "capabilityId" => capability_id = value.to_string(),
                     "selectedText" | "text" => selected_text = Some(value.to_string()),
+                    "mode" => mode = Some(value.to_string()),
+                    "instanceId" => instance_id = Some(value.to_string()),
+                    "reuse" => reuse = Some(value.to_string()),
+                    "focus" => focus = Some(value.parse().unwrap_or(true)),
                     _ => {
                         args.insert(key.to_string(), serde_json::Value::String(value.to_string()));
                     }
                 }
             }
+            
+            // Enforce mode presence
+            if mode.is_none() {
+                println!("[deep_link] Rejected: mode is required. URL: {}", url);
+                return;
+            }
+
+            let state = app.state::<AppState>();
+            let mode_str = mode.clone().unwrap();
+            
+            println!("[deep_link] Processing URL: {}", url);
+
+            // Resolve target
+            let (window_type, label) = match resolve_target_window(&state, &mode_str, instance_id.as_deref(), reuse.as_deref()) {
+                Ok(res) => res,
+                Err(e) => {
+                    println!("[deep_link] Resolution failed: {}", e);
+                    return;
+                }
+            };
+
+            println!("[deep_link] Resolved target: type={} label={}", window_type, label);
 
             let invocation = Invocation {
                 id: uuid::Uuid::new_v4().to_string(),
@@ -1525,24 +1759,37 @@ fn handle_deep_link(app: &AppHandle, url: String) {
                 }),
                 source: "protocol".to_string(),
                 ui: Some(InvocationUi {
-                    mode: Some("overlay".to_string()),
-                    focus: Some(true),
+                    mode,
+                    instance_id,
+                    reuse,
+                    focus,
                     position: None,
                     auto_close: None,
+                    target_label: Some(label.clone()),
                 }),
                 created_at: chrono::Utc::now().timestamp(),
             };
 
-            let state = app.state::<AppState>();
-            let mut current = state.current_invocation.lock().unwrap();
-            *current = Some(invocation.clone());
+            {
+                let mut invocations = state.invocations_by_label.lock().unwrap();
+                invocations.insert(label.clone(), invocation.clone());
+                println!("[deep_link] Inserted invocation for label: {}", label);
+            }
 
             let _ = app.emit("app://invocation", invocation);
             
-            let app_clone = app.clone();
-            tauri::async_runtime::spawn(async move {
-                let _ = show_overlay(app_clone);
-            });
+            let focus_val = focus.unwrap_or(true);
+
+            // Execute window operations synchronously on the main thread
+            // Removing spawn to avoid potential thread-safety issues with window creation
+            match ensure_window(app, &label, &window_type) {
+                Ok(_) => println!("[deep_link] ensure_window success: {}", label),
+                Err(e) => println!("[deep_link] ensure_window failed: {}", e),
+            }
+            match show_window_by_label(app, &label, focus_val) {
+                Ok(_) => println!("[deep_link] show_window success: {}", label),
+                Err(e) => println!("[deep_link] show_window failed: {}", e),
+            }
         }
     }
 }
@@ -1551,7 +1798,9 @@ fn handle_deep_link(app: &AppHandle, url: String) {
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState {
-            current_invocation: Mutex::new(None),
+            invocations_by_label: Mutex::new(HashMap::new()),
+            pet_queue_by_label: Mutex::new(HashMap::new()),
+            last_active_by_type: Mutex::new(HashMap::new()),
             chat_sessions: Mutex::new(HashMap::new()),
             chat_cancel_flags: Mutex::new(HashMap::new()),
             mcp_tools_cache: Mutex::new(HashMap::new()),

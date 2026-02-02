@@ -16,13 +16,24 @@ export async function setupEventListeners() {
 
   // 1. Continuous Listen: Subscribe to future events
   listen<Invocation>('app://invocation', (event) => {
-    console.log(`[${label}] Received app://invocation event:`, event.payload);
-    useInvocationStore.getState().setCurrentInvocation(event.payload);
+    const payload = event.payload;
+    const ui = payload.ui as any;
+    const targetLabel = ui?.targetLabel;
+
+    // Filter events: only process if targetLabel matches current window label.
+    // If targetLabel is missing (legacy), we might process it if we are 'overlay' or 'main'.
+    // But for new windows (translate-*, chat-*, pet-*), we strict check.
+    if (targetLabel && targetLabel !== label) {
+      return;
+    }
+
+    console.log(`[${label}] Received app://invocation event:`, payload);
+    useInvocationStore.getState().setCurrentInvocation(payload);
   }).catch(console.error);
 
   // 2. Initial Pull: Get current state from Rust (after listener is ready)
   try {
-    const initialInvocation = await invoke<Invocation | null>('get_current_invocation');
+    const initialInvocation = await invoke<Invocation | null>('get_current_invocation', { label });
     if (initialInvocation) {
       console.log(`[${label}] Pulled initial invocation:`, initialInvocation);
       useInvocationStore.getState().setCurrentInvocation(initialInvocation);
