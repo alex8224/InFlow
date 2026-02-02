@@ -303,6 +303,12 @@ export function ChatOverlayView() {
     leakPendingRef.current = '';
   }, [sessionId]);
 
+  useEffect(() => {
+    if (listRef.current && messages.length > 0) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
+  }, [messages]);
+
   const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
     if (!text) return;
