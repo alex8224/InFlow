@@ -196,6 +196,53 @@
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     @apply bg-muted-foreground/20;
   }
+
+  /* Pet Animations */
+  @keyframes pet-clippy-bounce {
+    0%, 100% {
+      transform: translateY(0) scaleY(1) rotate(0deg);
+    }
+    15% {
+      transform: translateY(-2px) scaleY(0.95) scaleX(1.05) rotate(-2deg); /* Land */
+    }
+    30% {
+      transform: translateY(-15px) scaleY(1.05) scaleX(0.95) rotate(2deg); /* Jump */
+    }
+    45% {
+      transform: translateY(0) scaleY(1) rotate(0deg);
+    }
+    60% {
+      transform: translateY(-4px) rotate(-1deg); /* Small bounce */
+    }
+    75% {
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes pet-clippy-blink {
+    0%, 90% {
+      opacity: 1;
+      transform: scaleY(1);
+    }
+    95% {
+      opacity: 0.8;
+      transform: scaleY(0.1);
+    }
+    100% {
+      opacity: 1;
+      transform: scaleY(1);
+    }
+  }
+
+  .animate-pet-clippy-bounce {
+    animation: pet-clippy-bounce 2.5s cubic-bezier(0.28, 0.84, 0.42, 1) infinite;
+    transform-origin: bottom center;
+  }
+
+  .animate-pet-clippy-blink {
+    animation: pet-clippy-blink 4s linear infinite;
+    transform-origin: center;
+  }
 }
 
 html, body, #root {
