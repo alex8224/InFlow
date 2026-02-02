@@ -303,12 +303,6 @@ export function ChatOverlayView() {
     leakPendingRef.current = '';
   }, [sessionId]);
 
-  useEffect(() => {
-    if (listRef.current && messages.length > 0) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
-    }
-  }, [messages]);
-
   const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
     if (!text) return;
@@ -338,9 +332,7 @@ export function ChatOverlayView() {
     activeAssistantMessageId.current = assistantId;
     setStreaming(true);
 
-    if (listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
-    }
+    autoScrollRef.current = true;
 
     if (debugStreamRef.current) {
       const runId = `run_${Date.now()}_${Math.random().toString(16).slice(2)}`;
