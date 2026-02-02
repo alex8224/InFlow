@@ -1488,7 +1488,6 @@ fn ensure_window(app: &AppHandle, label: &str, window_type: &str) -> Result<taur
                 .decorations(false)
                 .transparent(true) 
                 .shadow(false)
-                .always_on_top(true)
                 .skip_taskbar(true)
                 .visible(false); 
         },
@@ -1510,7 +1509,6 @@ fn ensure_window(app: &AppHandle, label: &str, window_type: &str) -> Result<taur
                 .decorations(false)
                 .transparent(true)
                 .shadow(false)
-                .always_on_top(true)
                 .skip_taskbar(true)
                 .visible(false);
          },
@@ -1530,7 +1528,6 @@ fn ensure_window(app: &AppHandle, label: &str, window_type: &str) -> Result<taur
                 .inner_size(480.0, 580.0)
                 .decorations(false)
                 .transparent(true)
-                .always_on_top(true)
                 .skip_taskbar(true)
                 .visible(false);
          },
@@ -1660,7 +1657,6 @@ fn show_overlay(app: AppHandle) -> Result<(), String> {
         if overlay.is_minimized().map_err(|e: tauri::Error| e.to_string())? {
             overlay.unminimize().map_err(|e: tauri::Error| e.to_string())?;
         }
-        let _ = overlay.set_always_on_top(true);
         overlay.show().map_err(|e: tauri::Error| e.to_string())?;
         overlay.set_focus().map_err(|e: tauri::Error| e.to_string())?;
     }
