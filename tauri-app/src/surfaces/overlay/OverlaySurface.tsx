@@ -1,8 +1,8 @@
 import { useMemo, useState, useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
-import { X, Globe, Zap, Sparkles, Bot, Plus, Trash2, Square, Pin, PinOff } from 'lucide-react';
-import { chatCancel, chatSessionCreate, getAppConfig, AppConfig } from '../../integrations/tauri/api';
+import { X, Globe, Zap, Sparkles, Bot, Plus, Trash2, Square, Pin, PinOff, Wrench } from 'lucide-react';
+import { chatCancel, chatSessionCreate, getAppConfig, AppConfig, chatToolsCatalog, ToolCatalogItem } from '../../integrations/tauri/api';
 import { cn } from '../../lib/cn';
 import { useInvocationStore } from '../../stores/invocationStore';
 import { useChatStore } from '../../stores/chatStore';
@@ -26,10 +26,17 @@ export function OverlaySurface() {
   const chatSessionId = useChatStore((s) => s.sessionId);
   const chatSessionProviderId = useChatStore((s) => s.sessionProviderId);
   const chatIsStreaming = useChatStore((s) => s.isStreaming);
+  const chatSelectedTools = useChatStore((s) => s.selectedTools);
+  const chatToggleTool = useChatStore((s) => s.toggleTool);
+  const chatSetSelectedTools = useChatStore((s) => s.setSelectedTools);
   const chatSetSessionProviderId = useChatStore((s) => s.setSessionProviderId);
   const chatResetSession = useChatStore((s) => s.resetSession);
   const chatClearConversation = useChatStore((s) => s.clearConversation);
   const chatSetSession = useChatStore((s) => s.setSession);
+
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [toolsLoading, setToolsLoading] = useState(false);
+  const [toolsCatalog, setToolsCatalog] = useState<ToolCatalogItem[]>([]);
 
   useEffect(() => {
     loadConfig();
@@ -64,6 +71,18 @@ export function OverlaySurface() {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+
+  useEffect(() => {
+    if (!toolsOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (!el) return;
+      if (el.closest('[data-tools-panel]') || el.closest('[data-tools-button]')) return;
+      setToolsOpen(false);
+    };
+    window.addEventListener('mousedown', onDown, true);
+    return () => window.removeEventListener('mousedown', onDown, true);
+  }, [toolsOpen]);
 
   const toggleMaximize = async () => {
     try {
@@ -194,7 +213,26 @@ export function OverlaySurface() {
   const currentProvider = config?.llmProviders.find((p) => p.id === config.activeProviderId);
   const currentChatProvider = config?.llmProviders.find((p) => p.id === chatProviderId);
 
-  const mcpEnabledCount = (config?.mcpRemoteServers ?? []).filter((s) => s.enabled).length;
+  const mcpCatalogByServer = useMemo(() => {
+    const m = new Map<string, { serverId: string; serverName: string; items: ToolCatalogItem[] }>();
+    for (const t of toolsCatalog) {
+      if (t.source !== 'mcp') continue;
+      const sid = t.serverId ?? 'unknown';
+      const sname = t.serverName ?? t.serverId ?? 'MCP';
+      const key = `${sid}::${sname}`;
+      const cur = m.get(key) ?? { serverId: sid, serverName: sname, items: [] };
+      cur.items.push(t);
+      m.set(key, cur);
+    }
+    return Array.from(m.values()).map((g) => ({ ...g, items: g.items.sort((a, b) => a.title.localeCompare(b.title)) }));
+  }, [toolsCatalog]);
+
+  const builtinCatalog = useMemo(() => {
+    return toolsCatalog
+      .filter((t) => t.source === 'builtin')
+      .slice()
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [toolsCatalog]);
 
   const handleChatNew = async () => {
     chatResetSession();
@@ -221,7 +259,9 @@ export function OverlaySurface() {
       <div
         className={cn(
           'w-full h-full bg-background text-foreground flex flex-col overflow-hidden',
-          isMaximized ? 'rounded-none border-0' : 'rounded-2xl border border-border/50'
+          isMaximized
+            ? 'rounded-none border-0 shadow-none ring-0'
+            : 'rounded-2xl border border-border/50 shadow-[0_12px_48px_rgba(0,0,0,0.18)] ring-1 ring-black/10'
         )}
       >
         
@@ -230,127 +270,245 @@ export function OverlaySurface() {
           onMouseDown={handleDrag}
           onDoubleClick={handleHeaderDoubleClick}
           data-tauri-drag-region
-          className="flex justify-between items-center px-4 h-14 bg-muted/40 border-b border-border/40 select-none cursor-grab active:cursor-grabbing shrink-0 relative"
+          className="flex items-center px-3 h-11 bg-muted/20 border-b border-border/30 select-none cursor-grab active:cursor-grabbing shrink-0 relative gap-2"
         >
-          <div className="flex items-center gap-3 pointer-events-none text-left">
-            <div className="bg-primary/10 p-2 rounded-xl text-primary shadow-sm border border-primary/10">
-              {isChat ? <Bot className="w-4.5 h-4.5" /> : <Globe className="w-4.5 h-4.5" />}
+          {/* Left Brand */}
+          <div className="flex items-center gap-2 pointer-events-none text-left shrink-0">
+            <div className="bg-primary/5 p-1.5 rounded-lg text-primary shadow-sm border border-primary/10">
+              {isChat ? <Bot className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
             </div>
-            <div className="flex flex-col">
-                <span className="font-black text-xs tracking-widest uppercase opacity-90">inFlow</span>
-                <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-tighter -mt-0.5 truncate max-w-[100px]">
-                    {currentInvocation?.capabilityId || 'System'}
-                </span>
-            </div>
+            <span className="font-black text-[11px] tracking-widest uppercase opacity-80 hidden sm:block">inFlow</span>
           </div>
 
-          {/* Center controls */}
-          {isTranslate && (
-            <div className="absolute left-1/2 -translate-x-1/2 flex bg-background/50 backdrop-blur-sm p-1 rounded-xl border border-border/50 scale-90 origin-center">
-              <button
-                onClick={() => setActiveService('google')}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold transition-all",
-                  activeService === 'google' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Zap className={cn("w-3 h-3", activeService === 'google' ? "text-yellow-500 fill-yellow-500" : "")} />
-                极速
-              </button>
-              <button
-                onClick={() => setActiveService('ai')}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold transition-all",
-                  activeService === 'ai' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Sparkles className={cn("w-3 h-3", activeService === 'ai' ? "text-blue-500 fill-blue-500" : "")} />
-                AI
-              </button>
-            </div>
-          )}
-
-          {isChat && (
-            <div
-              className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 bg-background/50 backdrop-blur-sm p-1.5 rounded-xl border border-border/50"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <Select value={chatProviderId || ''} onValueChange={(v) => chatSetSessionProviderId(v)}>
-                <SelectTrigger className="h-8 w-[320px] max-w-[46vw] min-w-[220px] rounded-lg bg-background border-border/50 shadow-sm text-[11px] font-bold">
-                  <SelectValue placeholder="Select model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(config?.llmProviders ?? []).map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name} • {p.modelId}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <div className="px-2 py-1 rounded-lg border border-border/50 bg-background/60 text-[10px] font-bold text-muted-foreground flex items-center gap-2">
-                <span className={cn('w-1.5 h-1.5 rounded-full', mcpEnabledCount > 0 ? 'bg-green-500' : 'bg-muted-foreground/40')} />
-                MCP {mcpEnabledCount}
+          {/* Center Controls (Flexible) */}
+          <div className="flex-1 min-w-0 flex justify-center">
+            {isTranslate && (
+              <div className="flex bg-background/50 backdrop-blur-sm p-1 rounded-lg border border-border/50 scale-90 origin-center shrink-0">
+                <button
+                  onClick={() => setActiveService('google')}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold transition-all",
+                    activeService === 'google' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Zap className={cn("w-3 h-3", activeService === 'google' ? "text-yellow-500 fill-yellow-500" : "")} />
+                  <span className="hidden xs:inline">极速</span>
+                </button>
+                <button
+                  onClick={() => setActiveService('ai')}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold transition-all",
+                    activeService === 'ai' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Sparkles className={cn("w-3 h-3", activeService === 'ai' ? "text-blue-500 fill-blue-500" : "")} />
+                  <span className="hidden xs:inline">AI</span>
+                </button>
               </div>
-            </div>
-          )}
+            )}
 
-          <div className="flex items-center gap-2 z-50 relative">
+            {isChat && (
+              <div
+                className="flex items-center gap-1.5 bg-background/50 backdrop-blur-sm p-1 rounded-lg border border-border/50 max-w-full min-w-0"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <Select value={chatProviderId || ''} onValueChange={(v) => chatSetSessionProviderId(v)}>
+                  <SelectTrigger className="h-7 min-w-0 w-full max-w-[200px] rounded-md bg-background border-border/50 shadow-sm text-[10px] font-bold px-2 gap-1 focus:ring-0">
+                    <SelectValue placeholder="Select model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(config?.llmProviders ?? []).map((p) => (
+                      <SelectItem key={p.id} value={p.id} className="text-[11px]">
+                        {p.name} • {p.modelId}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+
+          {/* Right Controls */}
+          <div className="flex items-center gap-1 z-50 shrink-0">
             <button
               onClick={handlePin}
               onMouseDown={(e) => e.stopPropagation()}
               className={cn(
-                "h-9 w-9 flex items-center justify-center rounded-xl transition-all active:scale-90 border border-transparent",
+                "h-7 w-7 flex items-center justify-center rounded-lg transition-all active:scale-90 border border-transparent",
                 isPinned
                   ? "text-primary bg-primary/10 hover:bg-primary/20"
                   : "text-muted-foreground hover:bg-muted/40 hover:text-foreground hover:border-border/40"
               )}
-              title={isPinned ? "Unpin (restore positioning)" : "Pin (keep on top)"}
+              title={isPinned ? "Unpin" : "Pin"}
             >
-              {isPinned ? <Pin className="w-4.5 h-4.5 fill-current" /> : <PinOff className="w-4.5 h-4.5" />}
+              {isPinned ? <Pin className="w-3.5 h-3.5 fill-current" /> : <PinOff className="w-3.5 h-3.5" />}
             </button>
+            
             {isChat && (
               <>
                 <button
-                  onClick={handleChatNew}
+                  onClick={async () => {
+                    const next = !toolsOpen;
+                    setToolsOpen(next);
+                    if (!next) return;
+                    setToolsLoading(true);
+                    try {
+                      const list = await chatToolsCatalog();
+                      setToolsCatalog(list);
+                    } catch (err) {
+                      console.error('Failed to load tools catalog:', err);
+                      setToolsCatalog([]);
+                    } finally {
+                      setToolsLoading(false);
+                    }
+                  }}
                   onMouseDown={(e) => e.stopPropagation()}
-                  className="h-9 w-9 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-all active:scale-90 border border-transparent hover:border-border/40"
-                  title="New chat"
+                  data-tools-button
+                  className={cn(
+                    "h-7 px-2 flex items-center gap-1.5 justify-center rounded-lg text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-all active:scale-90 border border-transparent hover:border-border/40",
+                    toolsOpen && "bg-muted/40 text-foreground border-border/40"
+                  )}
+                  title="Tools"
                 >
-                  <Plus className="w-4.5 h-4.5" />
+                  <Wrench className="w-3.5 h-3.5" />
+                  <span className="text-[9px] font-black uppercase tracking-widest">{chatSelectedTools.length}</span>
                 </button>
-                <button
-                  onClick={handleChatClear}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  className="h-9 w-9 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-all active:scale-90 border border-transparent hover:border-border/40"
-                  title="Clear"
-                >
-                  <Trash2 className="w-4.5 h-4.5" />
-                </button>
+
+                <div className="hidden sm:flex items-center gap-1">
+                  <button
+                    onClick={handleChatNew}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-all active:scale-90 border border-transparent hover:border-border/40"
+                    title="New chat"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={handleChatClear}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-all active:scale-90 border border-transparent hover:border-border/40"
+                    title="Clear"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {/* Mobile/Narrow collapse for Chat Actions could go here if needed, currently hiding New/Clear on very narrow screens is acceptable or they can wrap if we use flex-wrap */}
+                
                 <button
                   onClick={handleChatStop}
                   onMouseDown={(e) => e.stopPropagation()}
                   disabled={!chatIsStreaming}
                   className={cn(
-                    'h-9 w-9 flex items-center justify-center rounded-xl transition-all active:scale-90 border border-transparent hover:border-destructive/20',
+                    'h-7 w-7 flex items-center justify-center rounded-lg transition-all active:scale-90 border border-transparent hover:border-destructive/20',
                     chatIsStreaming
                       ? 'text-destructive hover:bg-destructive/10'
-                      : 'text-muted-foreground/40 cursor-not-allowed'
+                      : 'text-muted-foreground/40 cursor-not-allowed hidden' // Hide stop button when not streaming to save space
                   )}
                   title="Stop"
                 >
-                  <Square className="w-4.5 h-4.5" />
+                  <Square className="w-3.5 h-3.5 fill-current" />
                 </button>
+
+                {toolsOpen && (
+                  <div
+                    data-tools-panel
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="absolute right-3 top-[calc(100%+8px)] w-[340px] max-w-[calc(100vw-24px)] rounded-2xl border border-border/60 bg-background/95 backdrop-blur-md shadow-[0_20px_60px_rgba(0,0,0,0.25)] p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2 px-1 pb-2">
+                      <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Tools</div>
+                      <button
+                        type="button"
+                        className="text-[10px] font-bold text-muted-foreground hover:text-foreground"
+                        onClick={() => chatSetSelectedTools([])}
+                      >
+                        Clear
+                      </button>
+                    </div>
+
+                    {toolsLoading ? (
+                      <div className="px-2 py-6 text-xs text-muted-foreground">Loading…</div>
+                    ) : (
+                      <div className="max-h-[320px] overflow-auto custom-scrollbar pr-1 space-y-3">
+                        {builtinCatalog.length > 0 && (
+                          <div className="rounded-xl border border-border/50 bg-muted/10 p-2">
+                            <div className="px-1 pb-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground/70">Builtin</div>
+                            <div className="space-y-1">
+                              {builtinCatalog.map((t) => {
+                                const checked = chatSelectedTools.includes(t.fnName);
+                                return (
+                                  <label key={t.fnName} className="flex items-start gap-2 px-1 py-1 rounded-lg hover:bg-muted/30 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => chatToggleTool(t.fnName)}
+                                      className="mt-0.5"
+                                    />
+                                    <div className="min-w-0">
+                                      <div className="text-[11px] font-bold text-foreground truncate">{t.title}</div>
+                                      {t.description && (
+                                        <div className="text-[10px] text-muted-foreground/80 leading-snug">{t.description}</div>
+                                      )}
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {mcpCatalogByServer.length > 0 && (
+                          <div className="space-y-2">
+                            {mcpCatalogByServer.map((g) => (
+                              <div key={`${g.serverId}:${g.serverName}`} className="rounded-xl border border-border/50 bg-muted/10 p-2">
+                                <div className="px-1 pb-1 flex items-center justify-between gap-2">
+                                  <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/70 truncate">MCP • {g.serverName}</div>
+                                </div>
+                                <div className="space-y-1">
+                                  {g.items.map((t) => {
+                                    const checked = chatSelectedTools.includes(t.fnName);
+                                    return (
+                                      <label key={t.fnName} className="flex items-start gap-2 px-1 py-1 rounded-lg hover:bg-muted/30 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => chatToggleTool(t.fnName)}
+                                          className="mt-0.5"
+                                        />
+                                        <div className="min-w-0">
+                                          <div className="text-[11px] font-bold text-foreground truncate">{t.title}</div>
+                                          {t.description && (
+                                            <div className="text-[10px] text-muted-foreground/80 leading-snug">{t.description}</div>
+                                          )}
+                                        </div>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {builtinCatalog.length === 0 && mcpCatalogByServer.length === 0 && (
+                          <div className="px-2 py-6 text-xs text-muted-foreground">No tools available.</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
+
+            <div className="w-px h-4 bg-border/40 mx-1" />
 
             <button
               onClick={handleClose}
               onMouseDown={(e) => e.stopPropagation()}
-              className="h-9 w-9 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all active:scale-90 relative border border-transparent hover:border-destructive/20"
+              className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all active:scale-90 relative border border-transparent hover:border-destructive/20"
               title="Close"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </header>

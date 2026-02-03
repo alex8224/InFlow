@@ -32,6 +32,7 @@ type ChatStore = {
   isStreaming: boolean;
   messages: ChatMessage[];
   toolCalls: Record<string, ToolCallRecord>;
+  selectedTools: string[];
   input: string;
 
   setSession: (sessionId: string) => void;
@@ -39,6 +40,9 @@ type ChatStore = {
   setInput: (value: string) => void;
   resetSession: () => void;
   clearConversation: () => void;
+
+  toggleTool: (fnName: string) => void;
+  setSelectedTools: (tools: string[]) => void;
 
   appendUserMessage: (text: string) => string;
   startAssistantMessage: () => string;
@@ -60,6 +64,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   isStreaming: false,
   messages: [],
   toolCalls: {},
+  selectedTools: [],
   input: '',
 
   setSession: (sessionId) => set({ sessionId }),
@@ -72,6 +77,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       isStreaming: false,
       messages: [],
       toolCalls: {},
+      selectedTools: [],
       input: '',
     });
   },
@@ -83,6 +89,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       toolCalls: {},
       input: '',
     });
+  },
+
+  toggleTool: (fnName) => {
+    const cur = get().selectedTools;
+    if (cur.includes(fnName)) {
+      set({ selectedTools: cur.filter((x) => x !== fnName) });
+    } else {
+      set({ selectedTools: [...cur, fnName] });
+    }
+  },
+
+  setSelectedTools: (tools) => {
+    const next = Array.from(new Set(tools.map((t) => t.trim()).filter(Boolean)));
+    set({ selectedTools: next });
   },
 
   appendUserMessage: (text) => {

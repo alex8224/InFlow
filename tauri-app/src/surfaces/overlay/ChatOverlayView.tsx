@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { Bot, Check, ChevronDown, ChevronRight, Copy, Send, Wrench } from 'lucide-react';
 
@@ -24,6 +24,7 @@ export function ChatOverlayView() {
     isStreaming,
     messages,
     toolCalls,
+    selectedTools,
     input,
     setSession,
     setInput,
@@ -38,6 +39,9 @@ export function ChatOverlayView() {
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const autoScrollRef = useRef(true);
+  const frozenScrollTopRef = useRef(0);
+  const frozenOffsetFromBottomRef = useRef(0);
+  const typingUnfreezeTimerRef = useRef<number | null>(null);
   const [toolPanelOpen, setToolPanelOpen] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
@@ -266,6 +270,14 @@ export function ChatOverlayView() {
   }, [sessionId]);
 
   useEffect(() => {
+    return () => {
+      if (typingUnfreezeTimerRef.current) {
+        window.clearTimeout(typingUnfreezeTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const prefillFromClipboard = async () => {
       if (currentInvocation?.capabilityId !== 'chat.overlay') return;
       if (!currentInvocation.id) return;
@@ -361,7 +373,7 @@ export function ChatOverlayView() {
     }
 
     try {
-      await chatStream(sid, currentProviderId, text);
+      await chatStream(sid, currentProviderId, text, selectedTools);
     } catch (err: any) {
       setStreaming(false);
       activeAssistantMessageId.current = null;
@@ -373,9 +385,44 @@ export function ChatOverlayView() {
   const handleScroll = () => {
     const el = listRef.current;
     if (!el) return;
-    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+    const offsetFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const isAtBottom = offsetFromBottom < 24;
     autoScrollRef.current = isAtBottom;
+    frozenScrollTopRef.current = el.scrollTop;
+    frozenOffsetFromBottomRef.current = offsetFromBottom;
   };
+
+  const freezeAutoScrollWhileTyping = () => {
+    autoScrollRef.current = false;
+    if (listRef.current) {
+      frozenScrollTopRef.current = listRef.current.scrollTop;
+      frozenOffsetFromBottomRef.current =
+        listRef.current.scrollHeight - listRef.current.scrollTop - listRef.current.clientHeight;
+    }
+    if (typingUnfreezeTimerRef.current) {
+      window.clearTimeout(typingUnfreezeTimerRef.current);
+    }
+    typingUnfreezeTimerRef.current = window.setTimeout(() => {
+      const el = listRef.current;
+      if (!el) {
+        autoScrollRef.current = true;
+        return;
+      }
+      const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+      autoScrollRef.current = isAtBottom;
+    }, 1200);
+  };
+
+  useLayoutEffect(() => {
+    if (autoScrollRef.current) return;
+    const el = listRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      const target =
+        el.scrollHeight - el.clientHeight - frozenOffsetFromBottomRef.current;
+      el.scrollTop = Math.max(0, target);
+    });
+  }, [input]);
 
   const toolCallEntries = Object.values(toolCalls);
 
@@ -395,7 +442,7 @@ export function ChatOverlayView() {
     );
   };
 
-  const copyMessageMarkdown = async (msgId: string, text: string) => {
+  const copyMessageMarkdown = useCallback(async (msgId: string, text: string) => {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedMsgId(msgId);
@@ -403,7 +450,62 @@ export function ChatOverlayView() {
     } catch {
       // ignore
     }
-  };
+  }, [setCopiedMsgId]);
+
+  const renderedMessages = messages.map((m) => (
+    <div key={m.id} className={cn('flex w-full', m.role === 'user' ? 'justify-end' : 'justify-center')}>
+      <div
+        className={cn(
+          'select-text',
+          m.role === 'user'
+            ? 'max-w-[min(720px,90%)] rounded-2xl border px-4 py-3 shadow-sm bg-foreground text-background border-foreground/10'
+            : 'w-full max-w-4xl px-1 py-1 bg-transparent text-foreground'
+        )}
+      >
+        {m.role === 'user' ? (
+          <div className="text-sm font-semibold leading-relaxed whitespace-pre-wrap break-words text-background/95 select-text">
+            {m.parts.find((p) => p.type === 'markdown')?.type === 'markdown'
+              ? (m.parts.find((p) => p.type === 'markdown') as any).content
+              : ''}
+          </div>
+        ) : (
+          <div className="group relative">
+            {(() => {
+              const raw =
+                m.parts.find((p) => p.type === 'markdown')?.type === 'markdown'
+                  ? (m.parts.find((p) => p.type === 'markdown') as any).content
+                  : '';
+              const isActive = activeAssistantMessageId.current === m.id;
+              const showTyping = isStreaming && isActive && raw.trim() === '';
+              return (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => copyMessageMarkdown(m.id, raw)}
+                    disabled={!raw || !raw.trim()}
+                    className={cn(
+                      'absolute right-0 top-0 -translate-y-1/2 translate-x-1/2 h-8 w-8 rounded-xl border border-border/60 bg-background/80 backdrop-blur-sm shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity',
+                      (!raw || !raw.trim()) && 'opacity-0 pointer-events-none'
+                    )}
+                    title="复制 Markdown"
+                  >
+                    {copiedMsgId === m.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                  {showTyping ? (
+                    <div className="py-2">
+                      <TypingIndicator />
+                    </div>
+                  ) : (
+                    <RichMarkdown className="leading-relaxed selection:bg-primary/20 select-text" markdown={raw} />
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+    </div>
+  ));
 
   const suggestions = [
     '把这个需求拆成开发任务清单，并给出优先级。',
@@ -417,9 +519,10 @@ export function ChatOverlayView() {
         <div
           ref={listRef}
           onScroll={handleScroll}
-          className="flex-1 min-h-0 overflow-auto rounded-2xl border border-border/50 bg-background/80 p-4 custom-scrollbar select-text"
+          className="flex-1 min-h-0 overflow-auto p-4 custom-scrollbar select-text"
+          style={{ overflowAnchor: 'none' }}
         >
-          <div className="space-y-4">
+          <div className="space-y-6 max-w-4xl mx-auto w-full">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center text-muted-foreground/40 gap-3 py-10">
                 <div className="p-4 bg-muted/30 rounded-full shadow-inner">
@@ -441,80 +544,27 @@ export function ChatOverlayView() {
               </div>
             )}
 
-            {messages.map((m) => (
-              <div key={m.id} className={cn('flex', m.role === 'user' ? 'justify-end' : 'justify-start')}>
-                <div
-                  className={cn(
-                    'max-w-[min(720px,90%)] rounded-2xl border px-4 py-3 shadow-sm select-text',
-                    m.role === 'user'
-                      ? 'bg-foreground text-background border-foreground/10'
-                      : 'bg-background/70 text-foreground border-border/60'
-                  )}
-                >
-                  {m.role === 'user' ? (
-                    <div className="text-sm font-semibold leading-relaxed whitespace-pre-wrap break-words text-background/95 select-text">
-                      {m.parts.find((p) => p.type === 'markdown')?.type === 'markdown'
-                        ? (m.parts.find((p) => p.type === 'markdown') as any).content
-                        : ''}
-                    </div>
-                  ) : (
-                    <div className="group relative">
-                      {(() => {
-                        const raw =
-                          m.parts.find((p) => p.type === 'markdown')?.type === 'markdown'
-                            ? (m.parts.find((p) => p.type === 'markdown') as any).content
-                            : '';
-                        const isActive = activeAssistantMessageId.current === m.id;
-                        const showTyping = isStreaming && isActive && raw.trim() === '';
-                        return (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => copyMessageMarkdown(m.id, raw)}
-                              disabled={!raw || !raw.trim()}
-                              className={cn(
-                                'absolute right-0 top-0 -translate-y-1/2 translate-x-1/2 h-8 w-8 rounded-xl border border-border/60 bg-background/80 backdrop-blur-sm shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity',
-                                (!raw || !raw.trim()) && 'opacity-0 pointer-events-none'
-                              )}
-                              title="复制 Markdown"
-                            >
-                              {copiedMsgId === m.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                            </button>
-                            {showTyping ? (
-                              <div className="py-2">
-                                <TypingIndicator />
-                              </div>
-                            ) : (
-                              <RichMarkdown className="leading-relaxed selection:bg-primary/20 select-text" markdown={raw} />
-                            )}
-                          </>
-                        );
-                      })()}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+            {renderedMessages}
           </div>
         </div>
 
         {toolCallEntries.length > 0 && (
-          <div className="shrink-0 rounded-2xl border border-border/50 bg-muted/10">
+          <div className="shrink-0 rounded-lg border border-border/20 bg-muted/5 my-2 mx-4">
             <button
               type="button"
               onClick={() => setToolPanelOpen((v) => !v)}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2"
+              className="w-full flex items-center justify-between gap-2 px-3 py-1.5"
             >
               <div className="flex items-center gap-2">
-                <Wrench className="w-4 h-4 text-muted-foreground" />
-                <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                <Wrench className="w-3.5 h-3.5 text-muted-foreground" />
+                <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/80">
                   Tool Calls ({toolCallEntries.length})
                 </div>
               </div>
               {toolPanelOpen ? (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
               ) : (
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
               )}
             </button>
 
@@ -562,10 +612,14 @@ export function ChatOverlayView() {
             <Textarea
               ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                freezeAutoScrollWhileTyping();
+                setInput(e.target.value);
+              }}
               placeholder="输入消息…"
               className="min-h-[52px] max-h-[180px] resize-none bg-background border-border/50 rounded-xl pl-4 pr-14 py-3 text-sm leading-relaxed select-text"
               onKeyDown={(e) => {
+                freezeAutoScrollWhileTyping();
                 if (e.key === 'Enter' && !e.shiftKey && !(e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
                   handleSend();

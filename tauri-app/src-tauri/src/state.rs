@@ -8,7 +8,6 @@ use crate::types::{Invocation, PetEvent};
 #[derive(Debug, Clone)]
 pub struct ChatSession {
     pub messages: Vec<ChatMessage>,
-    pub mcp_enabled: bool,
 }
 
 #[derive(Debug, Clone)]

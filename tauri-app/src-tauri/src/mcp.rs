@@ -394,12 +394,7 @@ pub async fn mcp_tools_list(server: &McpRemoteServer, state: &AppState) -> Resul
 }
 
 pub async fn get_cached_mcp_tools(config: &AppConfig, state: &AppState) -> Result<Vec<McpToolMeta>, String> {
-    let servers: Vec<McpRemoteServer> = config
-        .mcp_remote_servers
-        .iter()
-        .filter(|s| s.enabled)
-        .cloned()
-        .collect();
+    let servers: Vec<McpRemoteServer> = config.mcp_remote_servers.iter().cloned().collect();
 
     if servers.is_empty() {
         return Ok(Vec::new());

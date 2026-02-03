@@ -26,12 +26,31 @@ export interface AppConfig {
   mcpRemoteServers?: McpRemoteServer[];
 }
 
+export type ToolCatalogItem = {
+  fnName: string;
+  source: 'builtin' | 'mcp' | string;
+  title: string;
+  description?: string | null;
+  serverId?: string | null;
+  serverName?: string | null;
+  toolName?: string | null;
+};
+
 export async function chatSessionCreate(): Promise<{ sessionId: string }> {
   return await invoke('chat_session_create');
 }
 
-export async function chatStream(sessionId: string, providerId: string, userText: string): Promise<void> {
-  await invoke('chat_stream', { sessionId, providerId, userText });
+export async function chatStream(
+  sessionId: string,
+  providerId: string,
+  userText: string,
+  selectedTools?: string[]
+): Promise<void> {
+  await invoke('chat_stream', { sessionId, providerId, userText, selectedTools });
+}
+
+export async function chatToolsCatalog(): Promise<ToolCatalogItem[]> {
+  return await invoke('chat_tools_catalog');
 }
 
 export async function chatCancel(sessionId: string): Promise<void> {

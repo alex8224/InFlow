@@ -255,7 +255,7 @@ function SvgBlock({ code }: { code: string }) {
 
   return (
     <>
-      <div className="rounded-xl border border-border/60 bg-background/60 overflow-hidden relative group">
+      <div className="rounded-xl border border-border/60 bg-background/60 overflow-hidden relative group not-prose">
         <div
           className="p-3 overflow-auto flex justify-center bg-white/5"
           dangerouslySetInnerHTML={{ __html: code }}
@@ -339,14 +339,14 @@ function MermaidBlock({ code }: { code: string }) {
 
   if (!svg) {
     return (
-      <div className="rounded-xl border border-border/60 bg-muted/20 p-4 text-[11px] text-muted-foreground font-bold">
+      <div className="rounded-xl border border-border/60 bg-muted/20 p-4 text-[11px] text-muted-foreground font-bold not-prose">
         Rendering diagram...
       </div>
     );
   }
 
   return (
-    <div className="rounded-xl border border-border/60 bg-background/60 overflow-hidden">
+    <div className="rounded-xl border border-border/60 bg-background/60 overflow-hidden not-prose">
       <div className="p-3 overflow-auto" dangerouslySetInnerHTML={{ __html: svg }} />
     </div>
   );
@@ -355,7 +355,7 @@ function MermaidBlock({ code }: { code: string }) {
 export function RichMarkdown({ markdown, className }: { markdown: string; className?: string }) {
   const normalized = useMemo(() => normalizeMathMarkdown(markdown), [markdown]);
   return (
-    <div className={cn('prose prose-sm dark:prose-invert max-w-none', className)}>
+    <div className={cn('prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-p:my-1.5 prose-li:my-0.5 prose-ul:my-2 prose-ol:my-2 prose-headings:my-3 prose-hr:my-4 prose-pre:my-2', className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeRaw, rehypeKatex]}
@@ -372,12 +372,25 @@ export function RichMarkdown({ markdown, className }: { markdown: string; classN
             const code = raw.endsWith('\n') ? raw.slice(0, -1) : raw;
             const cls = String(codeProps.className ?? '');
             const lang = cls.match(/language-(\w+)/)?.[1];
+            const trimmedCode = code.trimStart();
+            const looksLikeSvg =
+              trimmedCode.startsWith('<svg') ||
+              (trimmedCode.startsWith('<?xml') &&
+                (() => {
+                  const endDecl = trimmedCode.indexOf('?>');
+                  if (endDecl === -1) return false;
+                  return trimmedCode.slice(endDecl + 2).trimStart().startsWith('<svg');
+                })());
 
-            if (lang?.toLowerCase() === 'mermaid') {
+            if (lang?.toLowerCase() === 'mermaid' || cls.includes('language-mermaid')) {
               return <MermaidBlock code={code} />;
             }
 
-            if (lang?.toLowerCase() === 'svg') {
+            if (
+              lang?.toLowerCase() === 'svg' ||
+              cls.includes('language-svg') ||
+              (lang?.toLowerCase() === 'xml' && looksLikeSvg)
+            ) {
               return <SvgBlock code={code} />;
             }
 

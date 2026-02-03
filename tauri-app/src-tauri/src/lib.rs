@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
-use tauri::{Manager, Emitter};
+use tauri::Manager;
 use std::sync::atomic::Ordering;
 
 mod config;
@@ -9,6 +9,7 @@ mod types;
 mod state;
 mod genai_client;
 mod mcp;
+mod llm_tools;
 mod windowing;
 mod deeplink;
 mod commands;
@@ -117,6 +118,7 @@ pub fn run() {
             chat::chat_session_create,
             chat::chat_stream,
             chat::chat_cancel,
+            chat::chat_tools_catalog,
             capability::execute_capability,
             capability::get_current_invocation,
             misc::show_overlay,
