@@ -15,6 +15,96 @@ pub fn mcp_default_protocol_version() -> &'static str {
     "2025-06-18"
 }
 
+fn mcp_debug_enabled() -> bool {
+    std::env::var("INFLOW_DEBUG_MCP").ok().as_deref() == Some("1")
+}
+
+fn mcp_trace_enabled() -> bool {
+    mcp_debug_enabled() || std::env::var("INFLOW_TRACE_MCP").ok().as_deref() == Some("1")
+}
+
+fn redact_url(url: &str) -> String {
+    let (base, qs) = match url.split_once('?') {
+        Some((b, q)) => (b, Some(q)),
+        None => (url, None),
+    };
+    let Some(qs) = qs else {
+        return base.to_string();
+    };
+
+    let mut out_pairs: Vec<String> = Vec::new();
+    for part in qs.split('&') {
+        if part.is_empty() {
+            continue;
+        }
+        let (k, v) = match part.split_once('=') {
+            Some((k, v)) => (k, Some(v)),
+            None => (part, None),
+        };
+        let k_l = k.to_ascii_lowercase();
+        let redact = k_l.contains("apikey") || k_l.contains("api_key") || k_l.contains("token") || k_l.contains("key");
+        if redact {
+            out_pairs.push(format!("{}=<redacted>", k));
+        } else if let Some(v) = v {
+            out_pairs.push(format!("{}={}", k, v));
+        } else {
+            out_pairs.push(k.to_string());
+        }
+    }
+
+    format!("{}?{}", base, out_pairs.join("&"))
+}
+
+fn redact_header_value(name: &str, value: &str) -> String {
+    let n = name.to_ascii_lowercase();
+    let should = n == "authorization" || n.contains("api-key") || n.contains("api_key") || n.contains("apikey") || n.contains("token");
+    if should {
+        "<redacted>".to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+fn redact_json_secrets(v: &serde_json::Value) -> serde_json::Value {
+    match v {
+        serde_json::Value::Object(map) => {
+            let mut out = serde_json::Map::new();
+            for (k, vv) in map {
+                let kl = k.to_ascii_lowercase();
+                let is_secret = kl == "authorization"
+                    || kl.contains("api_key")
+                    || kl.contains("apikey")
+                    || kl.contains("token")
+                    || kl.ends_with("key")
+                    || kl.contains("secret");
+                if is_secret {
+                    out.insert(k.clone(), serde_json::Value::String("<redacted>".to_string()));
+                } else {
+                    out.insert(k.clone(), redact_json_secrets(vv));
+                }
+            }
+            serde_json::Value::Object(out)
+        }
+        serde_json::Value::Array(arr) => serde_json::Value::Array(arr.iter().map(redact_json_secrets).collect()),
+        _ => v.clone(),
+    }
+}
+
+fn truncate_for_log(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        return s.to_string();
+    }
+    let mut out = String::new();
+    for (i, ch) in s.chars().enumerate() {
+        if i >= max_chars {
+            break;
+        }
+        out.push(ch);
+    }
+    out.push_str("…<truncated>");
+    out
+}
+
 fn mcp_http_client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
@@ -62,6 +152,21 @@ pub async fn mcp_post_jsonrpc(
     include_session_headers: bool,
 ) -> Result<(reqwest::StatusCode, HeaderMap, String), String> {
     let client = mcp_http_client();
+    if mcp_trace_enabled() {
+        let url = redact_url(&server.url);
+        let msg = redact_json_secrets(&message);
+        let msg_str = serde_json::to_string(&msg).unwrap_or_else(|_| "<unserializable>".to_string());
+        println!("[mcp][trace] http request url={} include_session_headers={} body={}", url, include_session_headers, truncate_for_log(&msg_str, 4000));
+        if let Some(h) = server.headers.as_ref() {
+            let mut keys: Vec<String> = h.keys().cloned().collect();
+            keys.sort();
+            for k in keys {
+                if let Some(v) = h.get(&k) {
+                    println!("[mcp][trace] http header {}={}", k, redact_header_value(&k, v));
+                }
+            }
+        }
+    }
     let mut req = client
         .post(&server.url)
         .header(reqwest::header::ACCEPT, mcp_accept_header_value())
@@ -97,6 +202,14 @@ pub async fn mcp_post_jsonrpc(
     let status = resp.status();
     let headers = resp.headers().clone();
     let body = resp.text().await.map_err(|e| format!("MCP 响应读取失败: {}", e))?;
+    if mcp_trace_enabled() {
+        let ct = headers
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("<missing>");
+        println!("[mcp][trace] http response status={} content_type={}", status, ct);
+        println!("[mcp][trace] http body={}", truncate_for_log(&body, 12000));
+    }
     Ok((status, headers, body))
 }
 
@@ -235,6 +348,13 @@ pub async fn mcp_ensure_initialized(server: &McpRemoteServer, state: &AppState) 
         return Ok(());
     }
 
+    if mcp_debug_enabled() {
+        println!(
+            "[mcp][debug] initialize start server_id={} url={}",
+            server.id, server.url
+        );
+    }
+
     let init_id = uuid::Uuid::new_v4().to_string();
     let init_msg = serde_json::json!({
         "jsonrpc": "2.0",
@@ -326,6 +446,15 @@ pub async fn mcp_ensure_initialized(server: &McpRemoteServer, state: &AppState) 
         .map(|s| s.to_string())
         .filter(|s| !s.trim().is_empty());
 
+    if mcp_debug_enabled() {
+        println!(
+            "[mcp][debug] initialize ok server_id={} protocolVersion={} session_id_present={}",
+            server.id,
+            negotiated,
+            session_id.is_some()
+        );
+    }
+
     {
         let mut sessions = state.mcp_sessions.lock().unwrap();
         sessions.insert(
@@ -360,11 +489,24 @@ pub async fn mcp_rpc(
 ) -> Result<serde_json::Value, String> {
     mcp_ensure_initialized(server, state).await?;
 
+    if mcp_debug_enabled() {
+        println!(
+            "[mcp][debug] rpc request server_id={} method={}",
+            server.id, method
+        );
+    }
+
     let attempt = mcp_call_request(server, state, method, params.clone(), true).await;
     if let Err(e) = &attempt {
         // If session expired or server requires re-init, reset session and retry once.
         if let Some(code) = mcp_http_status_from_error(e) {
             if code == 404 || code == 400 {
+                if mcp_debug_enabled() {
+                    println!(
+                        "[mcp][debug] rpc retry server_id={} method={} reason_http={}",
+                        server.id, method, code
+                    );
+                }
                 {
                     let mut sessions = state.mcp_sessions.lock().unwrap();
                     sessions.remove(&server.id);
@@ -406,6 +548,16 @@ pub async fn mcp_tools_list(server: &McpRemoteServer, state: &AppState) -> Resul
             input_schema,
         });
     }
+
+    if mcp_debug_enabled() {
+        let names: Vec<String> = out.iter().map(|t| t.tool_name.clone()).collect();
+        println!(
+            "[mcp][debug] tools/list ok server_id={} tools_count={} tools={}",
+            server.id,
+            names.len(),
+            names.join(",")
+        );
+    }
     Ok(out)
 }
 
@@ -416,6 +568,22 @@ pub async fn get_cached_mcp_tools(config: &AppConfig, state: &AppState) -> Resul
         .cloned()
         .filter(|s| s.enabled)
         .collect();
+
+    if mcp_debug_enabled() {
+        println!(
+            "[mcp][debug] get_cached_mcp_tools enabled_servers={}",
+            servers.len()
+        );
+        for s in &servers {
+            println!(
+                "[mcp][debug] server enabled id={} name={} url={} allowlist={}",
+                s.id,
+                s.name,
+                s.url,
+                s.tools_allowlist.as_ref().map(|v| v.len()).unwrap_or(0)
+            );
+        }
+    }
 
     if servers.is_empty() {
         return Ok(Vec::new());
@@ -434,6 +602,18 @@ pub async fn get_cached_mcp_tools(config: &AppConfig, state: &AppState) -> Resul
                     .filter(|c| now - c.fetched_at < ttl_seconds)
                     .cloned()
             };
+
+            if mcp_debug_enabled() {
+                println!(
+                    "[mcp][debug] tools cache {} server_id={} age_seconds={}",
+                    if cache_hit.is_some() { "hit" } else { "miss" },
+                    server.id,
+                    cache_hit
+                        .as_ref()
+                        .map(|c| now - c.fetched_at)
+                        .unwrap_or(-1)
+                );
+            }
 
             let mut tools = if let Some(cached) = cache_hit {
                 cached.tools
@@ -458,7 +638,18 @@ pub async fn get_cached_mcp_tools(config: &AppConfig, state: &AppState) -> Resul
             };
 
             if let Some(allow) = server.tools_allowlist.as_ref() {
+                let before = tools.len();
                 tools.retain(|t| allow.contains(&t.tool_name));
+                if mcp_debug_enabled() {
+                    let names: Vec<String> = tools.iter().map(|t| t.tool_name.clone()).collect();
+                    println!(
+                        "[mcp][debug] allowlist applied server_id={} before={} after={} allowed={}",
+                        server.id,
+                        before,
+                        tools.len(),
+                        names.join(",")
+                    );
+                }
             }
             tools
         }

@@ -72,6 +72,13 @@ pub async fn build_genai_tools(
         return Ok(Vec::new());
     }
 
+    let debug = std::env::var("INFLOW_DEBUG_TOOLS").ok().as_deref() == Some("1");
+    if debug {
+        let mut sel: Vec<String> = selected.iter().cloned().collect();
+        sel.sort();
+        println!("[tools][debug] selected_count={} selected={}", sel.len(), sel.join(","));
+    }
+
     let mut out: Vec<Tool> = Vec::new();
 
     // Stable ordering for deterministic tool list.
@@ -84,14 +91,27 @@ pub async fn build_genai_tools(
         by_key.insert((t.server_id.clone(), t.tool_name.clone()), t);
     }
 
+    if debug {
+        println!("[tools][debug] mcp_meta_count={}", by_key.len());
+    }
+
     for fn_name in selected_sorted {
         if let Some(tool) = builtin::build_builtin_tool(&fn_name, provider) {
+            if debug {
+                println!("[tools][debug] enable builtin fn_name={}", fn_name);
+            }
             out.push(tool);
             continue;
         }
 
         if let Some((server_id, tool_name)) = parse_mcp_fn_name(&fn_name) {
             if let Some(meta) = by_key.get(&(server_id.clone(), tool_name.clone())) {
+                if debug {
+                    println!(
+                        "[tools][debug] enable mcp fn_name={} server_id={} tool_name={}",
+                        fn_name, server_id, tool_name
+                    );
+                }
                 let mut tool = Tool::new(fn_name);
                 if let Some(desc) = meta.description.as_ref() {
                     tool = tool.with_description(desc.clone());
@@ -101,7 +121,14 @@ pub async fn build_genai_tools(
                     tool = tool.with_schema(sanitized);
                 }
                 out.push(tool);
+            } else if debug {
+                println!(
+                    "[tools][debug] skip mcp (no meta) fn_name={} server_id={} tool_name={}",
+                    fn_name, server_id, tool_name
+                );
             }
+        } else if debug {
+            println!("[tools][debug] skip unknown fn_name={}", fn_name);
         }
     }
 

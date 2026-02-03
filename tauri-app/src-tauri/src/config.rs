@@ -32,9 +32,19 @@ pub struct AppConfig {
     pub active_provider_id: Option<String>,
     pub preferred_service: String, // "google" or "ai"
     pub mcp_remote_servers: Vec<McpRemoteServer>,
+
+    // Chat system prompt customization.
+    // - chat_system_prompt: inline prompt text stored in config.json (supports \n).
+    // - chat_system_prompt_path: path to a text file containing the prompt (easier to edit).
+    pub chat_system_prompt: Option<String>,
+    pub chat_system_prompt_path: Option<String>,
 }
 
 impl AppConfig {
+    pub fn config_path() -> PathBuf {
+        Self::get_config_path()
+    }
+
     fn get_appdata_config_path() -> PathBuf {
         let mut path = PathBuf::from(std::env::var("APPDATA").unwrap_or_else(|_| "./".to_string()));
         path.push("inFlow");
@@ -90,6 +100,25 @@ impl AppConfig {
             Self::default_internal()
         };
 
+        if std::env::var("INFLOW_DEBUG_CONFIG").ok().as_deref() == Some("1") {
+            println!(
+                "[config][debug] loaded path={} providers={} mcp_servers={}",
+                path.display(),
+                config.llm_providers.len(),
+                config.mcp_remote_servers.len()
+            );
+            for s in &config.mcp_remote_servers {
+                println!(
+                    "[config][debug] mcp_server id={} name={} enabled={} url={} allowlist={}",
+                    s.id,
+                    s.name,
+                    s.enabled,
+                    s.url,
+                    s.tools_allowlist.as_ref().map(|v| v.len()).unwrap_or(0)
+                );
+            }
+        }
+
         if config.llm_providers.is_empty() {
             config.llm_providers = Self::get_default_providers();
         }
@@ -110,6 +139,8 @@ impl AppConfig {
             active_provider_id: Some("deepseek".to_string()),
             preferred_service: "google".to_string(),
             mcp_remote_servers: Vec::new(),
+            chat_system_prompt: None,
+            chat_system_prompt_path: None,
         }
     }
 
