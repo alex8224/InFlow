@@ -10,6 +10,7 @@ use crate::state::AppState;
 use super::{ToolCatalogItem, ToolExecResult};
 
 pub mod time;
+pub mod webfetch;
 
 pub struct BuiltinToolSpec {
     pub fn_name: &'static str,
@@ -29,6 +30,8 @@ fn builtin_registry() -> &'static HashMap<&'static str, BuiltinToolSpec> {
     REGISTRY.get_or_init(|| {
         let mut m = HashMap::new();
         let spec = time::spec();
+        m.insert(spec.fn_name, spec);
+        let spec = webfetch::spec();
         m.insert(spec.fn_name, spec);
         m
     })

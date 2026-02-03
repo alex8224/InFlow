@@ -38,6 +38,13 @@ pub struct AppConfig {
     // - chat_system_prompt_path: path to a text file containing the prompt (easier to edit).
     pub chat_system_prompt: Option<String>,
     pub chat_system_prompt_path: Option<String>,
+
+    // WebFetch tool proxy settings.
+    // - webfetch_use_system_proxy: if true (default), use OS proxy settings.
+    // - webfetch_proxy: optional explicit proxy URL (overrides system proxy).
+    //   Example: "http://127.0.0.1:7890"
+    pub webfetch_use_system_proxy: Option<bool>,
+    pub webfetch_proxy: Option<String>,
 }
 
 impl AppConfig {
@@ -141,6 +148,8 @@ impl AppConfig {
             mcp_remote_servers: Vec::new(),
             chat_system_prompt: None,
             chat_system_prompt_path: None,
+            webfetch_use_system_proxy: Some(true),
+            webfetch_proxy: None,
         }
     }
 

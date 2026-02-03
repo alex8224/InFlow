@@ -37,3 +37,6 @@ tokio-stream = { version = "0.1.18", features = ["sync"] }
 genai = "0.5"
 arboard = "3.6.1"
 tauri-plugin-global-shortcut = "2.3.1"
+html2text = "0.16.7"
+html2md-rs = "0.10.2"
+proxy_cfg = "0.4.2"

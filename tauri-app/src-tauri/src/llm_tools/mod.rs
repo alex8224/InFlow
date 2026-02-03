@@ -11,6 +11,8 @@ use crate::state::AppState;
 mod builtin;
 
 pub use builtin::time::TOOL_GET_CURRENT_DATETIME;
+#[allow(unused_imports)]
+pub use builtin::webfetch::TOOL_WEBFETCH;
 
 #[derive(Debug, Clone)]
 pub struct ToolExecResult {
