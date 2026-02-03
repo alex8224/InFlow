@@ -183,6 +183,17 @@
 }
 
 @layer utilities {
+  /*
+   * Window frame for the frameless overlay.
+   * Uses inset outline so the edge stays visible even when box-shadow is clipped.
+   */
+  .app-window-frame {
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.10), 0 18px 60px rgba(0, 0, 0, 0.18);
+  }
+  .dark .app-window-frame {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10), 0 18px 60px rgba(0, 0, 0, 0.45);
+  }
+
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
     height: 6px;

@@ -321,6 +321,18 @@ pub async fn chat_stream(
                 break;
             }
 
+            // Notify UI a tool call started (include arguments for display/debugging).
+            let _ = app.emit(
+                "chat-toolcall",
+                ChatToolCallEvent {
+                    session_id: session_id.clone(),
+                    call_id: tc.call_id.clone(),
+                    name: tc.fn_name.clone(),
+                    arguments: tc.fn_arguments.clone(),
+                    status: "started".to_string(),
+                },
+            );
+
             if !selected.contains(&tc.fn_name) {
                 let err = format!("Tool not enabled: {}", tc.fn_name);
                 let _ = app.emit(
@@ -329,7 +341,7 @@ pub async fn chat_stream(
                         session_id: session_id.clone(),
                         call_id: tc.call_id.clone(),
                         name: tc.fn_name.clone(),
-                        arguments: serde_json::Value::Null,
+                        arguments: tc.fn_arguments.clone(),
                         status: "error".to_string(),
                     },
                 );
@@ -368,7 +380,7 @@ pub async fn chat_stream(
                             session_id: session_id.clone(),
                             call_id: tc.call_id.clone(),
                             name: tc.fn_name.clone(),
-                            arguments: serde_json::Value::Null,
+                            arguments: tc.fn_arguments.clone(),
                             status: "done".to_string(),
                         },
                     );
@@ -397,7 +409,7 @@ pub async fn chat_stream(
                             session_id: session_id.clone(),
                             call_id: tc.call_id.clone(),
                             name: tc.fn_name.clone(),
-                            arguments: serde_json::Value::Null,
+                            arguments: tc.fn_arguments.clone(),
                             status: "error".to_string(),
                         },
                     );

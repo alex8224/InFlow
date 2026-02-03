@@ -5,10 +5,12 @@ use serde::Serialize;
 
 use crate::config::{AppConfig, LlmProvider, McpRemoteServer};
 use crate::genai_client::sanitize_tool_schema_for_provider;
-use crate::mcp::{get_cached_mcp_tools, parse_mcp_fn_name, mcp_rpc};
+use crate::mcp::{get_cached_mcp_tools, mcp_rpc, parse_mcp_fn_name};
 use crate::state::AppState;
 
-pub const TOOL_GET_CURRENT_DATETIME: &str = "inflow__get_current_datetime";
+mod builtin;
+
+pub use builtin::time::TOOL_GET_CURRENT_DATETIME;
 
 #[derive(Debug, Clone)]
 pub struct ToolExecResult {
@@ -28,21 +30,9 @@ pub struct ToolCatalogItem {
     pub tool_name: Option<String>,
 }
 
-fn builtin_catalog() -> Vec<ToolCatalogItem> {
-    vec![ToolCatalogItem {
-        fn_name: TOOL_GET_CURRENT_DATETIME.to_string(),
-        source: "builtin".to_string(),
-        title: "Local datetime".to_string(),
-        description: Some("Get current local date/time (prevents wrong year in search).".to_string()),
-        server_id: None,
-        server_name: None,
-        tool_name: None,
-    }]
-}
-
 pub async fn catalog(config: &AppConfig, state: &AppState) -> Result<Vec<ToolCatalogItem>, String> {
     let mut out = Vec::new();
-    out.extend(builtin_catalog());
+    out.extend(builtin::builtin_catalog_items());
 
     let servers: BTreeMap<String, String> = config
         .mcp_remote_servers
@@ -71,17 +61,7 @@ pub fn is_time_tool_selected(selected: &HashSet<String>) -> bool {
     selected.contains(TOOL_GET_CURRENT_DATETIME)
 }
 
-fn builtin_time_tool(provider: &LlmProvider) -> Tool {
-    let schema = serde_json::json!({
-        "type": "object",
-        "additionalProperties": false
-    });
-    let schema = sanitize_tool_schema_for_provider(provider, &schema);
-    Tool::new(TOOL_GET_CURRENT_DATETIME)
-        .with_description("Return current local datetime (ISO), date, time, unix, and UTC offset minutes.")
-        .with_schema(schema)
-}
-
+// Build the list of enabled tools (builtin + MCP) for the provider.
 pub async fn build_genai_tools(
     selected: &HashSet<String>,
     provider: &LlmProvider,
@@ -105,8 +85,8 @@ pub async fn build_genai_tools(
     }
 
     for fn_name in selected_sorted {
-        if fn_name == TOOL_GET_CURRENT_DATETIME {
-            out.push(builtin_time_tool(provider));
+        if let Some(tool) = builtin::build_builtin_tool(&fn_name, provider) {
+            out.push(tool);
             continue;
         }
 
@@ -131,43 +111,34 @@ pub async fn build_genai_tools(
 pub async fn execute_tool_call(
     selected: &HashSet<String>,
     provider: &LlmProvider,
-    _config: &AppConfig,
+    config: &AppConfig,
     state: &AppState,
     server_map: &BTreeMap<String, McpRemoteServer>,
     fn_name: &str,
     fn_arguments: &serde_json::Value,
 ) -> Result<ToolExecResult, String> {
-    let _ = provider; // reserved for future builtin behavior differences
-
     if !selected.contains(fn_name) {
         return Err(format!("Tool not enabled: {}", fn_name));
     }
 
-    if fn_name == TOOL_GET_CURRENT_DATETIME {
-        let now = chrono::Local::now();
-        let utc_offset_minutes: i32 = now.offset().local_minus_utc() / 60;
-        let content = serde_json::json!({
-            "iso": now.to_rfc3339(),
-            "date": now.date_naive().to_string(),
-            "time": now.time().format("%H:%M:%S").to_string(),
-            "unix": now.timestamp(),
-            "utcOffsetMinutes": utc_offset_minutes,
-        });
-        let response_content =
-            serde_json::to_string_pretty(&content).unwrap_or_else(|_| content.to_string());
-        return Ok(ToolExecResult {
-            content,
-            response_content,
-        });
+    if let Some(fut) = builtin::exec_builtin_tool(fn_name, provider, config, state, fn_arguments) {
+        return fut.await;
     }
 
     if let Some((server_id, tool_name)) = parse_mcp_fn_name(fn_name) {
         let server = server_map
             .get(&server_id)
             .ok_or_else(|| format!("MCP server not found: {}", server_id))?;
+
+        // Some providers emit `null` for tool arguments; MCP expects an object.
+        let args = if fn_arguments.is_null() {
+            serde_json::json!({})
+        } else {
+            fn_arguments.clone()
+        };
         let call_params = serde_json::json!({
             "name": tool_name,
-            "arguments": fn_arguments.clone(),
+            "arguments": args,
         });
         let content = mcp_rpc(server, state, "tools/call", call_params).await?;
         let response_content =

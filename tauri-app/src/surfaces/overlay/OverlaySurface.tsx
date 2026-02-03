@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
 import { X, Globe, Zap, Sparkles, Bot, Plus, Trash2, Square, Pin, PinOff, Wrench } from 'lucide-react';
@@ -38,20 +38,71 @@ export function OverlaySurface() {
   const [toolsLoading, setToolsLoading] = useState(false);
   const [toolsCatalog, setToolsCatalog] = useState<ToolCatalogItem[]>([]);
 
+  const toolsFetchedAtRef = useRef<number>(0);
+  const toolsFetchInFlightRef = useRef<Promise<void> | null>(null);
+  const TOOLS_CACHE_MS = 5 * 60 * 1000;
+
+  const fetchToolsCatalog = async (opts?: { force?: boolean; showLoadingIfEmpty?: boolean }) => {
+    const force = opts?.force ?? false;
+    const showLoadingIfEmpty = opts?.showLoadingIfEmpty ?? false;
+
+    const now = Date.now();
+    const isFresh = toolsCatalog.length > 0 && now - toolsFetchedAtRef.current < TOOLS_CACHE_MS;
+    if (!force && isFresh) return;
+
+    if (toolsFetchInFlightRef.current) return;
+
+    if (showLoadingIfEmpty && toolsCatalog.length === 0) {
+      setToolsLoading(true);
+    }
+
+    toolsFetchInFlightRef.current = (async () => {
+      try {
+        const list = await chatToolsCatalog();
+        setToolsCatalog(list);
+        toolsFetchedAtRef.current = Date.now();
+      } catch (err) {
+        console.error('Failed to load tools catalog:', err);
+        // Keep any previously loaded list; only empty state if we never had one.
+        if (toolsCatalog.length === 0) setToolsCatalog([]);
+      } finally {
+        setToolsLoading(false);
+        toolsFetchInFlightRef.current = null;
+      }
+    })();
+  };
+
   useEffect(() => {
     loadConfig();
 
+    const win = getCurrentWindow();
+    let resizeTimer: number | null = null;
+
     // Cache maximized state for styling.
-    getCurrentWindow()
+    win
       .isMaximized()
       .then(setIsMaximized)
       .catch(() => setIsMaximized(false));
 
     // Cache pinned state for styling.
-    getCurrentWindow()
+    win
       .isAlwaysOnTop()
       .then(setIsPinned)
       .catch(() => setIsPinned(false));
+
+    // Keep window state in sync even when user uses OS snap/maximize.
+    const unlistenResizedP = win.onResized(() => {
+      if (resizeTimer) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        win.isMaximized().then(setIsMaximized).catch(() => {});
+      }, 80);
+    });
+    const unlistenMovedP = win.onMoved(() => {
+      if (resizeTimer) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        win.isMaximized().then(setIsMaximized).catch(() => {});
+      }, 80);
+    });
 
     // Listen for config changes
     const unlistenConfig = listen<AppConfig>('app-config-changed', (event) => {
@@ -68,6 +119,9 @@ export function OverlaySurface() {
 
     return () => {
       unlistenConfig.then(f => f());
+      unlistenResizedP.then((f) => f()).catch(() => {});
+      unlistenMovedP.then((f) => f()).catch(() => {});
+      if (resizeTimer) window.clearTimeout(resizeTimer);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
@@ -203,6 +257,14 @@ export function OverlaySurface() {
         .then((res) => chatSetSession(res.sessionId))
         .catch((err) => console.error('Failed to create chat session:', err));
     }
+
+    // Prefetch tools list in the background to avoid a long wait on first click.
+    if (toolsCatalog.length === 0) {
+      const t = window.setTimeout(() => {
+        fetchToolsCatalog();
+      }, 250);
+      return () => window.clearTimeout(t);
+    }
   }, [isChat, config, chatSessionId, chatSessionProviderId]);
 
   const chatProviderId = useMemo(() => {
@@ -261,7 +323,7 @@ export function OverlaySurface() {
           'w-full h-full bg-background text-foreground flex flex-col overflow-hidden',
           isMaximized
             ? 'rounded-none border-0 shadow-none ring-0'
-            : 'rounded-2xl border border-border/50 shadow-[0_12px_48px_rgba(0,0,0,0.18)] ring-1 ring-black/10'
+            : 'rounded-2xl border border-border/60 ring-1 ring-black/10 dark:ring-white/10 app-window-frame'
         )}
       >
         
@@ -351,16 +413,7 @@ export function OverlaySurface() {
                     const next = !toolsOpen;
                     setToolsOpen(next);
                     if (!next) return;
-                    setToolsLoading(true);
-                    try {
-                      const list = await chatToolsCatalog();
-                      setToolsCatalog(list);
-                    } catch (err) {
-                      console.error('Failed to load tools catalog:', err);
-                      setToolsCatalog([]);
-                    } finally {
-                      setToolsLoading(false);
-                    }
+                    fetchToolsCatalog({ showLoadingIfEmpty: true });
                   }}
                   onMouseDown={(e) => e.stopPropagation()}
                   data-tools-button

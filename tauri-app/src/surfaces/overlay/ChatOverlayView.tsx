@@ -589,7 +589,7 @@ export function ChatOverlayView() {
                         </div>
                       </div>
                       <pre className="mt-2 text-[10px] leading-relaxed bg-muted/30 rounded-lg p-2 overflow-auto">
-                        <code>{JSON.stringify(c.arguments, null, 2)}</code>
+                        <code>{JSON.stringify(c.arguments ?? {}, null, 2)}</code>
                       </pre>
                       {c.result !== undefined && (
                         <pre className="mt-2 text-[10px] leading-relaxed bg-muted/30 rounded-lg p-2 overflow-auto">

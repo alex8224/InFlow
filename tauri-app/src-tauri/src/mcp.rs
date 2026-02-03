@@ -1,4 +1,7 @@
 use reqwest::header::HeaderMap;
+use std::sync::OnceLock;
+use std::time::Duration;
+
 use crate::config::{AppConfig, McpRemoteServer};
 use crate::state::{AppState, CachedMcpTools, McpServerSession, McpToolMeta};
 
@@ -10,6 +13,19 @@ pub fn mcp_accept_header_value() -> &'static str {
 
 pub fn mcp_default_protocol_version() -> &'static str {
     "2025-06-18"
+}
+
+fn mcp_http_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            // MCP servers are remote; fail fast rather than hanging the UI.
+            .connect_timeout(Duration::from_secs(8))
+            .timeout(Duration::from_secs(20))
+            .pool_idle_timeout(Duration::from_secs(90))
+            .build()
+            .expect("failed to build reqwest client")
+    })
 }
 
 pub fn parse_sse_data_events(body: &str) -> Vec<String> {
@@ -45,7 +61,7 @@ pub async fn mcp_post_jsonrpc(
     message: serde_json::Value,
     include_session_headers: bool,
 ) -> Result<(reqwest::StatusCode, HeaderMap, String), String> {
-    let client = reqwest::Client::new();
+    let client = mcp_http_client();
     let mut req = client
         .post(&server.url)
         .header(reqwest::header::ACCEPT, mcp_accept_header_value())
@@ -394,7 +410,12 @@ pub async fn mcp_tools_list(server: &McpRemoteServer, state: &AppState) -> Resul
 }
 
 pub async fn get_cached_mcp_tools(config: &AppConfig, state: &AppState) -> Result<Vec<McpToolMeta>, String> {
-    let servers: Vec<McpRemoteServer> = config.mcp_remote_servers.iter().cloned().collect();
+    let servers: Vec<McpRemoteServer> = config
+        .mcp_remote_servers
+        .iter()
+        .cloned()
+        .filter(|s| s.enabled)
+        .collect();
 
     if servers.is_empty() {
         return Ok(Vec::new());
@@ -403,38 +424,51 @@ pub async fn get_cached_mcp_tools(config: &AppConfig, state: &AppState) -> Resul
     let now = chrono::Utc::now().timestamp();
     let ttl_seconds: i64 = 300; // 5 minutes
 
-    let mut out = Vec::new();
-    for server in servers {
-        let cache_hit = {
-            let cache = state.mcp_tools_cache.lock().unwrap();
-            cache
-                .get(&server.id)
-                .filter(|c| now - c.fetched_at < ttl_seconds)
-                .cloned()
-        };
+    let futs = servers.into_iter().map(|server| {
+        let state = state;
+        async move {
+            let cache_hit = {
+                let cache = state.mcp_tools_cache.lock().unwrap();
+                cache
+                    .get(&server.id)
+                    .filter(|c| now - c.fetched_at < ttl_seconds)
+                    .cloned()
+            };
 
-        let mut tools = if let Some(cached) = cache_hit {
-            cached.tools
-        } else {
-            let fetched = mcp_tools_list(&server, state).await?;
-            let mut cache = state.mcp_tools_cache.lock().unwrap();
-            cache.insert(
-                server.id.clone(),
-                CachedMcpTools {
-                    tools: fetched.clone(),
-                    fetched_at: now,
-                },
-            );
-            fetched
-        };
+            let mut tools = if let Some(cached) = cache_hit {
+                cached.tools
+            } else {
+                match mcp_tools_list(&server, state).await {
+                    Ok(fetched) => {
+                        let mut cache = state.mcp_tools_cache.lock().unwrap();
+                        cache.insert(
+                            server.id.clone(),
+                            CachedMcpTools {
+                                tools: fetched.clone(),
+                                fetched_at: now,
+                            },
+                        );
+                        fetched
+                    }
+                    Err(err) => {
+                        println!("[mcp] tools/list failed server_id={} url={}: {}", server.id, server.url, err);
+                        Vec::new()
+                    }
+                }
+            };
 
-        if let Some(allow) = server.tools_allowlist.as_ref() {
-            tools.retain(|t| allow.contains(&t.tool_name));
+            if let Some(allow) = server.tools_allowlist.as_ref() {
+                tools.retain(|t| allow.contains(&t.tool_name));
+            }
+            tools
         }
+    });
 
-        out.extend(tools);
+    let results: Vec<Vec<McpToolMeta>> = futures::future::join_all(futs).await;
+    let mut out = Vec::new();
+    for mut tools in results {
+        out.append(&mut tools);
     }
-
     Ok(out)
 }
 

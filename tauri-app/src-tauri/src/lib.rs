@@ -107,6 +107,19 @@ pub fn run() {
                 }
             }
 
+            // Warm MCP tools cache in the background so opening the Tools panel feels instant.
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let config = crate::config::AppConfig::load();
+                    if config.mcp_remote_servers.iter().all(|s| !s.enabled) {
+                        return;
+                    }
+                    let state = handle.state::<AppState>();
+                    let _ = crate::mcp::get_cached_mcp_tools(&config, &state).await;
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
