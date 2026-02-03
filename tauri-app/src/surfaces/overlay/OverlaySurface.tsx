@@ -297,7 +297,10 @@ export function OverlaySurface() {
   }, [toolsCatalog]);
 
   const handleChatNew = async () => {
+    // Keep the currently enabled tools across sessions.
+    const keepTools = [...chatSelectedTools];
     chatResetSession();
+    if (keepTools.length) chatSetSelectedTools(keepTools);
     const res = await chatSessionCreate();
     chatSetSession(res.sessionId);
     const fallback = config?.activeProviderId ?? config?.llmProviders[0]?.id ?? null;
