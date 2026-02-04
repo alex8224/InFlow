@@ -649,28 +649,30 @@ pub async fn chat_infer_title(
     let client = build_genai_client(&provider)?;
     let model = resolve_genai_model(&provider);
 
-    let system = "Generate a very brief, concise title (2-5 words) for the conversation based on the user's input. Respond ONLY with the title text, no quotes or punctuation. Prefer Chinese if the input is in Chinese.";
+    let system = "总结会话内容并给出小于15个字的内容总结";
 
     println!("[chat] infer_title history_len={}", history.len());
 
-    // Focus on user messages to extract intent
-    let user_messages: Vec<_> = history.into_iter().filter(|m| m.role == genai::chat::Role::User).collect();
-    
-    if user_messages.is_empty() {
+    // // Focus on user messages to extract intent
+    // let user_messages: Vec<_> = history
+    //     .into_iter()
+    //     .filter(|m| m.role == genai::chat::ChatRole::User)
+    //     .collect();
+
+    if history.is_empty() {
         return Ok("新会话".to_string());
     }
 
-    let req = ChatRequest::new(user_messages).with_system(system);
+    let req = ChatRequest::new(history).with_system(system);
 
-    let res = client
-        .exec_chat(&model, req, None)
-        .await
-        .map_err(|e| {
-            println!("[chat] infer_title failed: {}", e);
-            e.to_string()
-        })?;
+    let res = client.exec_chat(&model, req, None).await.map_err(|e| {
+        println!("[chat] infer_title failed: {}", e);
+        e.to_string()
+    })?;
 
-    let title = res.into_first_text().unwrap_or_else(|| "新会话".to_string());
+    let title = res
+        .into_first_text()
+        .unwrap_or_else(|| "新会话".to_string());
     println!("[chat] inferred title raw: {}", title);
 
     let title = title

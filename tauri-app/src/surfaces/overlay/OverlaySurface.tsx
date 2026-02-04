@@ -59,6 +59,11 @@ export function OverlaySurface() {
   const chatSetSession = useChatStore((s) => s.setSession);
   const chatMessages = useChatStore((s) => s.messages);
   const chatSessionTitle = useChatStore((s) => s.sessionTitle);
+  const chatToolCalls = useChatStore((s) => s.toolCalls);
+
+  const runningTool = useMemo(() => {
+    return Object.values(chatToolCalls).find((t) => t.status === "started");
+  }, [chatToolCalls]);
 
   const [toolsOpen, setToolsOpen] = useState(false);
   const [toolsLoading, setToolsLoading] = useState(false);
@@ -546,9 +551,15 @@ export function OverlaySurface() {
             )}
 
             {isChat && (
-              <div className="flex items-center gap-2 max-w-[80%]">
+              <div className="flex items-center gap-2 max-w-[60%]">
                 <span className="text-[10px] font-black uppercase tracking-[0.2em] text-foreground/80 truncate">
-                  {chatSessionTitle || "新会话"}
+                  {runningTool ? (
+                    <span className="text-primary animate-pulse">
+                      Calling {runningTool.name}...
+                    </span>
+                  ) : (
+                    chatSessionTitle || "新会话"
+                  )}
                 </span>
               </div>
             )}
@@ -637,7 +648,7 @@ export function OverlaySurface() {
                     <Plus className="w-4 h-4" />
                   </button>
 
-                  <div className="hidden xs:flex items-center gap-1">
+                  <div className="flex items-center gap-1">
                     <button
                       onClick={handleChatShare}
                       onMouseDown={(e) => e.stopPropagation()}
