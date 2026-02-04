@@ -38,6 +38,10 @@ export type ToolCatalogItem = {
   toolName?: string | null;
 };
 
+export type ChatPart = 
+  | { type: 'text'; content: string }
+  | { type: 'image'; content: string }; // base64
+
 export async function chatSessionCreate(): Promise<{ sessionId: string }> {
   return await invoke('chat_session_create');
 }
@@ -45,10 +49,10 @@ export async function chatSessionCreate(): Promise<{ sessionId: string }> {
 export async function chatStream(
   sessionId: string,
   providerId: string,
-  userText: string,
+  userParts: ChatPart[],
   selectedTools?: string[]
 ): Promise<void> {
-  await invoke('chat_stream', { sessionId, providerId, userText, selectedTools });
+  await invoke('chat_stream', { sessionId, providerId, userParts, selectedTools });
 }
 
 export async function chatToolsCatalog(): Promise<ToolCatalogItem[]> {
@@ -87,6 +91,10 @@ export async function openWorkspace(view?: string): Promise<void> {
 
 export async function getClipboardText(): Promise<string> {
   return await invoke('get_clipboard_text');
+}
+
+export async function getClipboardImage(): Promise<string | null> {
+  return await invoke('get_clipboard_image');
 }
 
 export async function translateText(

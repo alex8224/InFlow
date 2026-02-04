@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { Bot, Check, ChevronDown, ChevronRight, Copy, Send, Wrench } from 'lucide-react';
+import { Bot, Check, ChevronDown, ChevronRight, Copy, Image as ImageIcon, Send, Wrench, X } from 'lucide-react';
 
 import { Button } from '../../components/ui/button';
 import { Textarea } from '../../components/ui/textarea';
@@ -26,8 +26,12 @@ export function ChatOverlayView() {
     toolCalls,
     selectedTools,
     input,
+    pendingImages,
     setSession,
     setInput,
+    addPendingImage,
+    removePendingImage,
+    clearPendingImages,
     appendUserMessage,
     startAssistantMessage,
     appendAssistantToken,
@@ -315,9 +319,11 @@ export function ChatOverlayView() {
     leakPendingRef.current = '';
   }, [sessionId]);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
-    if (!text) return;
+    if (!text && pendingImages.length === 0) return;
 
     if (!currentProviderId) {
       const msgId = startAssistantMessage();
@@ -338,8 +344,15 @@ export function ChatOverlayView() {
       }
     }
 
+    const parts: any[] = [];
+    if (text) parts.push({ type: 'markdown', content: text });
+    for (const img of pendingImages) {
+      parts.push({ type: 'image', content: img });
+    }
+
     setInput('');
-    appendUserMessage(text);
+    clearPendingImages();
+    appendUserMessage(parts as any);
     const assistantId = startAssistantMessage();
     activeAssistantMessageId.current = assistantId;
     setStreaming(true);
@@ -373,13 +386,51 @@ export function ChatOverlayView() {
     }
 
     try {
-      await chatStream(sid, currentProviderId, text, selectedTools);
+      const streamParts = parts.map((p) => {
+        if (p.type === 'markdown') return { type: 'text', content: p.content };
+        if (p.type === 'image') return { type: 'image', content: p.content };
+        return p;
+      });
+      await chatStream(sid, currentProviderId, streamParts as any, selectedTools);
     } catch (err: any) {
       setStreaming(false);
       activeAssistantMessageId.current = null;
       const msgId = startAssistantMessage();
       appendAssistantToken(msgId, `\n\n[error] ${err?.message || String(err)}`);
     }
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (prev) => {
+            const base64 = prev.target?.result as string;
+            addPendingImage(base64);
+          };
+          reader.readAsDataURL(file);
+        }
+      }
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    for (const file of Array.from(files)) {
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (prev) => {
+          const base64 = prev.target?.result as string;
+          addPendingImage(base64);
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+    e.target.value = ''; // Reset for next selection
   };
 
   const handleScroll = () => {
@@ -463,10 +514,21 @@ export function ChatOverlayView() {
         )}
       >
         {m.role === 'user' ? (
-          <div className="text-sm font-semibold leading-relaxed whitespace-pre-wrap break-words text-background/95 select-text">
-            {m.parts.find((p) => p.type === 'markdown')?.type === 'markdown'
-              ? (m.parts.find((p) => p.type === 'markdown') as any).content
-              : ''}
+          <div className="flex flex-col gap-3">
+            {m.parts.map((p, i) => (
+              <div key={i}>
+                {p.type === 'markdown' && (
+                  <div className="text-sm font-semibold leading-relaxed whitespace-pre-wrap break-words text-background/95 select-text">
+                    {p.content}
+                  </div>
+                )}
+                {p.type === 'image' && (
+                  <div className="rounded-lg overflow-hidden border border-background/10 bg-background/5">
+                    <img src={p.content} alt="User upload" className="max-w-full h-auto object-contain max-h-[300px]" />
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         ) : (
           <div className="group relative">
@@ -607,34 +669,72 @@ export function ChatOverlayView() {
           </div>
         )}
 
-        <div className="shrink-0 rounded-2xl border border-border/50 bg-muted/20 p-2">
-          <div className="relative">
-            <Textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => {
-                freezeAutoScrollWhileTyping();
-                setInput(e.target.value);
-              }}
-              placeholder="输入消息…"
-              className="min-h-[52px] max-h-[180px] resize-none bg-background border-border/50 rounded-xl pl-4 pr-14 py-3 text-sm leading-relaxed select-text"
-              onKeyDown={(e) => {
-                freezeAutoScrollWhileTyping();
-                if (e.key === 'Enter' && !e.shiftKey && !(e.ctrlKey || e.metaKey)) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-            />
+        <div className="shrink-0 flex flex-col gap-2 mx-4">
+          {pendingImages.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-1">
+              {pendingImages.map((img, idx) => (
+                <div key={idx} className="relative group rounded-xl overflow-hidden border border-border shadow-sm bg-background">
+                  <img src={img} alt="Pending" className="w-20 h-20 object-cover" />
+                  <button
+                    onClick={() => removePendingImage(idx)}
+                    className="absolute top-1 right-1 p-1 rounded-full bg-background/80 backdrop-blur-sm text-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
-            <Button
-              onClick={() => handleSend()}
-              disabled={!currentProviderId || isStreaming || !input.trim()}
-              className="absolute right-2 bottom-2 h-10 w-10 rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20"
-              title="发送 (Enter)\n换行 (Ctrl+Enter)"
-            >
-              <Send className="w-4 h-4" />
-            </Button>
+          <div className="rounded-2xl border border-border/50 bg-muted/20 p-2">
+            <div className="relative flex flex-col">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                accept="image/*"
+                multiple
+                className="hidden"
+              />
+              <Textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => {
+                  freezeAutoScrollWhileTyping();
+                  setInput(e.target.value);
+                }}
+                onPaste={handlePaste}
+                placeholder="输入消息…"
+                className="min-h-[52px] max-h-[180px] resize-none bg-background border-border/50 rounded-xl pl-4 pr-24 py-3 text-sm leading-relaxed select-text"
+                onKeyDown={(e) => {
+                  freezeAutoScrollWhileTyping();
+                  if (e.key === 'Enter' && !e.shiftKey && !(e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+              />
+
+              <div className="absolute right-2 bottom-2 flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-10 w-10 rounded-xl text-muted-foreground hover:text-foreground hover:bg-background/80"
+                  title="上传图片"
+                >
+                  <ImageIcon className="w-5 h-5" />
+                </Button>
+                <Button
+                  onClick={() => handleSend()}
+                  disabled={!currentProviderId || isStreaming || (!input.trim() && pendingImages.length === 0)}
+                  className="h-10 w-10 rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20"
+                  title="发送 (Enter)\n换行 (Ctrl+Enter)"
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

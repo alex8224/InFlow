@@ -1,4 +1,5 @@
 use arboard::Clipboard;
+use base64::{engine::general_purpose, Engine as _};
 use tauri::Manager;
 
 #[tauri::command]
@@ -46,4 +47,37 @@ pub fn get_clipboard_text() -> Result<String, String> {
     clipboard
         .get_text()
         .map_err(|e| format!("读取剪贴板失败: {}", e))
+}
+
+#[tauri::command]
+pub fn get_clipboard_image() -> Result<Option<String>, String> {
+    let mut clipboard = Clipboard::new().map_err(|e| format!("无法初始化剪贴板: {}", e))?;
+
+    match clipboard.get_image() {
+        Ok(image) => {
+            let mut buf = Vec::new();
+            {
+                let img = image::RgbaImage::from_raw(
+                    image.width as u32,
+                    image.height as u32,
+                    image.bytes.to_vec(),
+                )
+                .ok_or_else(|| "图像转换失败".to_string())?;
+                let mut cursor = std::io::Cursor::new(&mut buf);
+                img.write_to(&mut cursor, image::ImageFormat::Png)
+                    .map_err(|e| format!("编码 PNG 失败: {}", e))?;
+            }
+
+            let b64 = general_purpose::STANDARD.encode(buf);
+            Ok(Some(format!("data:image/png;base64,{}", b64)))
+        }
+        Err(e) => {
+            let s = e.to_string();
+            if s.contains("not present") || s.contains("No such file") || s.contains("not found") {
+                Ok(None)
+            } else {
+                Err(format!("读取剪贴板图像失败: {}", e))
+            }
+        }
+    }
 }

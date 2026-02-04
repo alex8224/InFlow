@@ -9,6 +9,14 @@ use crate::state::{AppState, ChatSession};
 use crate::types::{ChatSessionCreateResponse, ChatEndEvent, ChatTokenEvent, ChatToolCallEvent, ChatToolResultEvent};
 use crate::genai_client::{build_genai_client, resolve_genai_model, strip_system_reminder};
 use crate::llm_tools;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "content", rename_all = "camelCase")]
+pub enum ChatPart {
+    Text(String),
+    Image(String), // base64, possibly with data: prefix
+}
 
 fn extract_system_prompt_from_prompts_md(md: &str) -> Option<String> {
     // If prompts.md contains a "System" section, use that section's body.
@@ -113,7 +121,7 @@ pub fn chat_cancel(session_id: String, state: State<'_, AppState>) -> Result<(),
 pub async fn chat_stream(
     session_id: String,
     provider_id: String,
-    user_text: String,
+    user_parts: Vec<ChatPart>,
     selected_tools: Option<Vec<String>>,
     app: AppHandle,
     state: State<'_, AppState>,
@@ -183,11 +191,38 @@ pub async fn chat_stream(
 
     // Append user message
     {
+        let mut genai_parts = Vec::new();
+        for p in &user_parts {
+            match p {
+                ChatPart::Text(t) => {
+                    genai_parts.push(genai::chat::ContentPart::Text(t.clone()));
+                }
+                ChatPart::Image(b64) => {
+                    let (mime, data_b64) = if let Some(pos) = b64.find(";base64,") {
+                        let mime = if b64.starts_with("data:") {
+                            &b64[5..pos]
+                        } else {
+                            "image/png"
+                        };
+                        let data = &b64[pos + 8..];
+                        (mime.to_string(), data)
+                    } else {
+                        ("image/png".to_string(), b64.as_str())
+                    };
+                    
+                    genai_parts.push(genai::chat::ContentPart::Binary(genai::chat::Binary::new(
+                        mime, 
+                        genai::chat::BinarySource::Base64(data_b64.to_string().into()), 
+                        None
+                    )));
+                }
+            }
+        }
         let mut sessions = state.chat_sessions.lock().unwrap();
         let session = sessions
             .get_mut(&session_id)
             .ok_or_else(|| "会话不存在".to_string())?;
-        session.messages.push(ChatMessage::user(user_text.clone()));
+        session.messages.push(ChatMessage::user(genai_parts));
     }
 
     let client = build_genai_client(&provider)?;

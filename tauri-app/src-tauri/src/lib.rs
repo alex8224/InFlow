@@ -153,6 +153,7 @@ pub fn run() {
             misc::close_overlay,
             misc::open_workspace,
             misc::get_clipboard_text,
+            misc::get_clipboard_image,
             share::chat_share_create,
             share::get_share_server_port,
         ])

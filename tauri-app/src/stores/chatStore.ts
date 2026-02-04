@@ -6,6 +6,7 @@ export type ChatToolCallStatus = 'started' | 'done' | 'error';
 
 export type ChatMessagePart =
   | { type: 'markdown'; content: string }
+  | { type: 'image'; content: string }
   | { type: 'toolCall'; callId: string }
   | { type: 'toolResult'; callId: string }
   | { type: 'error'; message: string };
@@ -34,17 +35,21 @@ type ChatStore = {
   toolCalls: Record<string, ToolCallRecord>;
   selectedTools: string[];
   input: string;
+  pendingImages: string[];
 
   setSession: (sessionId: string) => void;
   setSessionProviderId: (providerId: string) => void;
   setInput: (value: string) => void;
+  addPendingImage: (base64: string) => void;
+  removePendingImage: (index: number) => void;
+  clearPendingImages: () => void;
   resetSession: () => void;
   clearConversation: () => void;
 
   toggleTool: (fnName: string) => void;
   setSelectedTools: (tools: string[]) => void;
 
-  appendUserMessage: (text: string) => string;
+  appendUserMessage: (parts: ChatMessagePart[]) => string;
   startAssistantMessage: () => string;
   appendAssistantToken: (messageId: string, delta: string) => void;
   setStreaming: (value: boolean) => void;
@@ -66,10 +71,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   toolCalls: {},
   selectedTools: [],
   input: '',
+  pendingImages: [],
 
   setSession: (sessionId) => set({ sessionId }),
   setSessionProviderId: (providerId) => set({ sessionProviderId: providerId }),
   setInput: (value) => set({ input: value }),
+  addPendingImage: (base64) => set({ pendingImages: [...get().pendingImages, base64] }),
+  removePendingImage: (index) => set({ pendingImages: get().pendingImages.filter((_, i) => i !== index) }),
+  clearPendingImages: () => set({ pendingImages: [] }),
 
   resetSession: () => {
     set({
@@ -79,6 +88,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       toolCalls: {},
       selectedTools: [],
       input: '',
+      pendingImages: [],
     });
   },
 
@@ -88,6 +98,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       messages: [],
       toolCalls: {},
       input: '',
+      pendingImages: [],
     });
   },
 
@@ -105,12 +116,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ selectedTools: next });
   },
 
-  appendUserMessage: (text) => {
+  appendUserMessage: (parts) => {
     const id = makeId('msg_user');
     const msg: ChatMessage = {
       id,
       role: 'user',
-      parts: [{ type: 'markdown', content: text }],
+      parts,
       createdAt: Date.now(),
     };
     set({ messages: [...get().messages, msg] });
