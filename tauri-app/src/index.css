@@ -207,7 +207,11 @@
 
   /* Selection highlight */
   ::selection {
-    @apply bg-primary/10 text-primary;
+    /* Avoid forcing selection text color; keep contrast in dark bubbles. */
+    @apply bg-primary/15;
+  }
+  .dark ::selection {
+    @apply bg-primary/25;
   }
 
   .custom-scrollbar::-webkit-scrollbar {

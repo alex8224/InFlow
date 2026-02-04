@@ -46,6 +46,63 @@ type ChatToolResultEvent = {
   content: unknown;
 };
 
+function FloatingCopyButton({
+  text,
+  title,
+  className,
+  iconClassName,
+  copiedIconClassName,
+  hideWhenDisabled = false,
+}: {
+  text: string;
+  title: string;
+  className: string;
+  iconClassName?: string;
+  copiedIconClassName?: string;
+  hideWhenDisabled?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<number | null>(null);
+
+  const canCopy = Boolean(text && text.trim());
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const onCopy = useCallback(async () => {
+    if (!canCopy) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => setCopied(false), 900);
+    } catch {
+      // ignore
+    }
+  }, [canCopy, text]);
+
+  if (!canCopy && hideWhenDisabled) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      disabled={!canCopy}
+      className={cn(className, !canCopy && "opacity-0 pointer-events-none")}
+      title={title}
+    >
+      {copied ? (
+        <Check className={cn("w-4 h-4 text-green-500", copiedIconClassName)} />
+      ) : (
+        <Copy className={cn("w-4 h-4", iconClassName)} />
+      )}
+    </button>
+  );
+}
+
 export function ChatOverlayView() {
   const currentInvocation = useInvocationStore((s) => s.currentInvocation);
   const {
@@ -79,7 +136,6 @@ export function ChatOverlayView() {
   const frozenScrollTopRef = useRef(0);
   const frozenOffsetFromBottomRef = useRef(0);
   const typingUnfreezeTimerRef = useRef<number | null>(null);
-  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [isInputVisible, setIsInputVisible] = useState(true);
 
   const lastPrefillInvocationIdRef = useRef<string | null>(null);
@@ -608,22 +664,6 @@ export function ChatOverlayView() {
     );
   };
 
-  const copyMessageMarkdown = useCallback(
-    async (msgId: string, text: string) => {
-      try {
-        await navigator.clipboard.writeText(text);
-        setCopiedMsgId(msgId);
-        setTimeout(
-          () => setCopiedMsgId((cur) => (cur === msgId ? null : cur)),
-          900,
-        );
-      } catch {
-        // ignore
-      }
-    },
-    [setCopiedMsgId],
-  );
-
   const renderedMessages = useMemo(() => {
     return messages.map((m) => (
       <div
@@ -636,7 +676,9 @@ export function ChatOverlayView() {
         <div
           className={cn(
             "relative group flex gap-3",
-            m.role === "user" ? "flex-row-reverse max-w-[85%]" : "w-full",
+            m.role === "user"
+              ? "flex-row-reverse max-w-[92%] sm:max-w-[78%]"
+              : "w-full",
           )}
         >
           {/* Avatar/Icon for AI */}
@@ -652,21 +694,53 @@ export function ChatOverlayView() {
             className={cn(
               "select-text transition-all duration-200",
               m.role === "user"
-                ? "rounded-2xl rounded-tr-sm border px-4 py-3 shadow-sm bg-primary text-primary-foreground border-primary/20"
-                : "flex-1 pt-1.5",
+                ? "relative rounded-[1.6rem] border pl-4 pr-12 py-3 shadow-[0_18px_40px_-26px_rgba(0,0,0,0.75)] bg-gradient-to-br from-[#1b2140] to-[#0f1226] text-slate-50 border-white/10 ring-1 ring-white/5 selection:bg-white/20 selection:text-white"
+                : "flex-1",
             )}
           >
             {m.role === "user" ? (
               <div className="flex flex-col gap-3">
+                {(() => {
+                  const rawText = m.parts
+                    .filter(
+                      (p): p is { type: "markdown"; content: string } =>
+                        p.type === "markdown",
+                    )
+                    .map((p) => p.content)
+                    .join("\n\n")
+                    .trim();
+                  const rawImages = m.parts
+                    .filter(
+                      (p): p is { type: "image"; content: string } =>
+                        p.type === "image",
+                    )
+                    .map((p) => p.content)
+                    .join("\n")
+                    .trim();
+                  const raw = [rawText, rawImages]
+                    .filter((s) => Boolean(s && s.trim()))
+                    .join("\n\n")
+                    .trim();
+                  if (!raw) return null;
+                  return (
+                    <FloatingCopyButton
+                      text={raw}
+                      title="复制"
+                      className="absolute right-2 top-2 h-8 w-8 rounded-xl border border-white/15 bg-black/20 backdrop-blur-sm shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-black/30 active:scale-90"
+                      iconClassName="text-white/85"
+                      copiedIconClassName="text-green-400"
+                    />
+                  );
+                })()}
                 {m.parts.map((p, i) => (
                   <div key={i}>
                     {p.type === "markdown" && (
-                      <div className="text-sm font-medium leading-relaxed whitespace-pre-wrap break-words select-text">
+                      <div className="text-sm leading-relaxed whitespace-pre-wrap break-words select-text">
                         {p.content}
                       </div>
                     )}
                     {p.type === "image" && (
-                      <div className="rounded-xl overflow-hidden border border-white/20 shadow-md">
+                      <div className="rounded-xl overflow-hidden border border-white/15 shadow-[0_14px_30px_-22px_rgba(0,0,0,0.7)]">
                         <img
                           src={p.content}
                           alt="User upload"
@@ -678,7 +752,7 @@ export function ChatOverlayView() {
                 ))}
               </div>
             ) : (
-              <div className="relative group">
+              <div className="relative rounded-[1.6rem] border border-border/60 bg-background/75 backdrop-blur-sm px-4 py-3 shadow-sm">
                 {(() => {
                   const raw =
                     m.parts.find((p) => p.type === "markdown")?.type ===
@@ -690,25 +764,14 @@ export function ChatOverlayView() {
                   const showTyping = isStreaming && isActive && raw.trim() === "";
                   return (
                     <>
-                      <button
-                        type="button"
-                        onClick={() => copyMessageMarkdown(m.id, raw)}
-                        disabled={!raw || !raw.trim()}
-                        className={cn(
-                          "absolute -right-2 top-0 h-8 w-8 rounded-xl border border-border/60 bg-background/80 backdrop-blur-sm shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-muted active:scale-90",
-                          (!raw || !raw.trim()) &&
-                            "opacity-0 pointer-events-none",
-                        )}
+                      <FloatingCopyButton
+                        text={String(raw ?? "")}
                         title="复制 Markdown"
-                      >
-                        {copiedMsgId === m.id ? (
-                          <Check className="w-4 h-4 text-green-500" />
-                        ) : (
-                          <Copy className="w-4 h-4" />
-                        )}
-                      </button>
+                        hideWhenDisabled
+                        className="absolute right-2 top-2 h-8 w-8 rounded-xl border border-border/60 bg-background/70 backdrop-blur-sm shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-muted active:scale-90"
+                      />
                       {showTyping ? (
-                        <div className="py-2">
+                        <div className="py-1">
                           <TypingIndicator />
                         </div>
                       ) : (
@@ -729,8 +792,6 @@ export function ChatOverlayView() {
   }, [
     messages,
     isStreaming,
-    copiedMsgId,
-    copyMessageMarkdown,
     runningTool,
   ]);
 
