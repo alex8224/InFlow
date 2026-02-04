@@ -377,7 +377,12 @@ export function OverlaySurface() {
 
   const handleChatStop = async () => {
     if (!chatSessionId) return;
-    await chatCancel(chatSessionId);
+    useChatStore.getState().setStreaming(false);
+    try {
+      await chatCancel(chatSessionId);
+    } catch (err) {
+      console.error('Failed to cancel chat:', err);
+    }
   };
 
   const handleChatShare = async () => {

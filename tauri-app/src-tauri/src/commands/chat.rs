@@ -92,6 +92,11 @@ pub fn chat_session_create(state: State<'_, AppState>) -> Result<ChatSessionCrea
 
 #[tauri::command]
 pub fn chat_cancel(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    // Trigger notify
+    if let Some(notifier) = state.chat_cancel_notifiers.lock().unwrap().get(&session_id) {
+        notifier.notify_waiters();
+    }
+
     if let Some(flag) = state
         .chat_cancel_flags
         .lock()
@@ -149,14 +154,21 @@ pub async fn chat_stream(
         provider.base_url
     );
 
-    let cancel_flag = {
+    let (cancel_flag, cancel_notify) = {
         let mut flags = state.chat_cancel_flags.lock().unwrap();
         let flag = flags
             .entry(session_id.clone())
             .or_insert_with(|| Arc::new(AtomicBool::new(false)))
             .clone();
         flag.store(false, Ordering::SeqCst);
-        flag
+
+        let mut notifiers = state.chat_cancel_notifiers.lock().unwrap();
+        let notify = notifiers
+            .entry(session_id.clone())
+            .or_insert_with(|| Arc::new(tokio::sync::Notify::new()))
+            .clone();
+
+        (flag, notify)
     };
 
     // Ensure session exists
@@ -294,78 +306,68 @@ pub async fn chat_stream(
         let mut captured_text: Option<String> = None;
         let mut streamed_text = String::new();
 
-        while let Some(event_res) = stream.next().await {
-            if cancel_flag.load(Ordering::SeqCst) {
-                break;
-            }
+        loop {
+            tokio::select! {
+                _ = cancel_notify.notified() => {
+                    println!("[chat] cancelled via notify session_id={}", session_id);
+                    break;
+                }
+                event_res = stream.next() => {
+                    let event = match event_res {
+                        Some(Ok(ev)) => ev,
+                        Some(Err(e)) => {
+                            let msg = e.to_string();
+                            if msg.contains("Error event in stream") {
+                                break;
+                            }
+                            return Err(format!("流读取失败: {}", msg));
+                        }
+                        None => break,
+                    };
 
-            let event = match event_res {
-                Ok(ev) => ev,
-                Err(e) => {
-                    // Some providers (notably Gemini-compatible adapters) may emit a terminal
-                    // "error" SSE with metadata-only payload (e.g. finishReason=null) at the end
-                    // of the stream. Treat it as a graceful end so the UI doesn't show a scary error.
-                    let msg = e.to_string();
-                    if msg.contains("Error event in stream") {
-                        println!(
-                            "[chat] stream ended with provider error event (treated as end) provider_id={} kind={} model={} tools={}: {}",
-                            provider.id,
-                            provider.kind,
-                            model,
-                            genai_tools.len(),
-                            msg
-                        );
+                    if cancel_flag.load(Ordering::SeqCst) {
                         break;
                     }
 
-                    println!(
-                        "[chat] stream event error provider_id={} kind={} model={} tools={}: {}",
-                        provider.id,
-                        provider.kind,
-                        model,
-                        genai_tools.len(),
-                        msg
-                    );
-                    return Err(format!("流读取失败: {}", msg));
-                }
-            };
-            match event {
-                ChatStreamEvent::Chunk(chunk) => {
-                    streamed_text.push_str(&chunk.content);
-                    let _ = app.emit(
-                        "chat-token",
-                        ChatTokenEvent {
-                            session_id: session_id.clone(),
-                            delta: chunk.content,
-                        },
-                    );
-                }
-                ChatStreamEvent::ToolCallChunk(tool_chunk) => {
-                    let tc = tool_chunk.tool_call;
-                    seen_tool_calls.entry(tc.call_id.clone()).or_insert_with(|| tc.clone());
-                    let _ = app.emit(
-                        "chat-toolcall",
-                        ChatToolCallEvent {
-                            session_id: session_id.clone(),
-                            call_id: tc.call_id,
-                            name: tc.fn_name,
-                            arguments: tc.fn_arguments,
-                            status: "started".to_string(),
-                        },
-                    );
-                }
-                ChatStreamEvent::End(end) => {
-                    captured_text = end.captured_first_text().map(|s| s.to_string());
-                    if let Some(tool_calls) = end.captured_tool_calls() {
-                        for tc in tool_calls {
-                            seen_tool_calls
-                                .entry(tc.call_id.clone())
-                                .or_insert_with(|| (*tc).clone());
+                    match event {
+                        ChatStreamEvent::Chunk(chunk) => {
+                            streamed_text.push_str(&chunk.content);
+                            let _ = app.emit(
+                                "chat-token",
+                                ChatTokenEvent {
+                                    session_id: session_id.clone(),
+                                    delta: chunk.content,
+                                },
+                            );
                         }
+                        ChatStreamEvent::ToolCallChunk(tool_chunk) => {
+                            let tc = tool_chunk.tool_call;
+                            seen_tool_calls.entry(tc.call_id.clone()).or_insert_with(|| tc.clone());
+                            let _ = app.emit(
+                                "chat-toolcall",
+                                ChatToolCallEvent {
+                                    session_id: session_id.clone(),
+                                    call_id: tc.call_id,
+                                    name: tc.fn_name,
+                                    arguments: tc.fn_arguments,
+                                    status: "started".to_string(),
+                                },
+                            );
+                        }
+                        ChatStreamEvent::End(end) => {
+                            captured_text = end.captured_first_text().map(|s| s.to_string());
+                            if let Some(tool_calls) = end.captured_tool_calls() {
+                                for tc in tool_calls {
+                                    seen_tool_calls
+                                        .entry(tc.call_id.clone())
+                                        .or_insert_with(|| (*tc).clone());
+                                }
+                            }
+                            break;
+                        }
+                        _ => {}
                     }
-                    break;
                 }
-                _ => {}
             }
         }
 

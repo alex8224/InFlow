@@ -29,6 +29,7 @@ pub fn run() {
             last_active_by_type: Mutex::new(HashMap::new()),
             chat_sessions: Mutex::new(HashMap::new()),
             chat_cancel_flags: Mutex::new(HashMap::new()),
+            chat_cancel_notifiers: Mutex::new(HashMap::new()),
             translate_cancel_flags: Mutex::new(HashMap::new()),
             translate_cancel_notifiers: Mutex::new(HashMap::new()),
             mcp_tools_cache: Mutex::new(HashMap::new()),
