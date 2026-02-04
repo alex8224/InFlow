@@ -9,7 +9,7 @@ import {
   SelectContent, 
   SelectItem, 
   SelectTrigger, 
-  SelectValue 
+  SelectValue
 } from '../../components/ui/select';
 import { translateText, translateTextAiStream, getAppConfig, AppConfig, getClipboardText } from '../../integrations/tauri/api';
 import { cn } from '../../lib/cn';
@@ -120,7 +120,8 @@ export function TranslateView() {
 
     try {
       if (activeService === 'ai') {
-        await translateTextAiStream(text.trim(), from, to);
+        const providerId = config?.translateProviderId || config?.activeProviderId || undefined;
+        await translateTextAiStream(text.trim(), from, to, providerId);
       } else {
         const result = await translateText(text.trim(), from, to);
         setTranslatedText(result.translatedText);
@@ -178,36 +179,38 @@ export function TranslateView() {
       {/* Controls - Fixed Height 50px */}
       <div className="h-[50px] shrink-0 flex items-center justify-between bg-muted/20 p-1.5 rounded-2xl border border-border/50 mb-3">
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
-          <Select value={fromLang} onValueChange={setFromLang}>
-            <SelectTrigger className="h-8 rounded-lg bg-background border-border shadow-sm text-[11px] font-bold hover:border-primary/50 transition-all flex-1 min-w-[100px]">
-              <div className="flex items-center gap-2 truncate">
-                <Languages className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+            <Select value={fromLang} onValueChange={setFromLang}>
+              <SelectTrigger className="h-8 rounded-lg bg-background border-border shadow-sm text-[11px] font-bold hover:border-primary/50 transition-all flex-1 min-w-[70px]">
+                <div className="flex items-center gap-2 truncate">
+                  <Languages className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <SelectValue />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                {LANGUAGES.map((lang) => (
+                  <SelectItem key={lang.code} value={lang.code}>
+                    {lang.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/30 mx-0.5 shrink-0" />
+            
+            <Select value={toLang} onValueChange={setToLang}>
+              <SelectTrigger className="h-8 rounded-lg bg-background border-border shadow-sm text-[11px] font-bold hover:border-primary/50 transition-all flex-1 min-w-[70px]">
                 <SelectValue />
-              </div>
-            </SelectTrigger>
-            <SelectContent>
-              {LANGUAGES.map((lang) => (
-                <SelectItem key={lang.code} value={lang.code}>
-                  {lang.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          
-          <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/30 mx-0.5 shrink-0" />
-          
-          <Select value={toLang} onValueChange={setToLang}>
-            <SelectTrigger className="h-8 rounded-lg bg-background border-border shadow-sm text-[11px] font-bold hover:border-primary/50 transition-all flex-1 min-w-[100px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {LANGUAGES.filter(l => l.code !== 'auto').map((lang) => (
-                <SelectItem key={lang.code} value={lang.code}>
-                  {lang.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+              </SelectTrigger>
+              <SelectContent>
+                {LANGUAGES.filter(l => l.code !== 'auto').map((lang) => (
+                  <SelectItem key={lang.code} value={lang.code}>
+                    {lang.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <Button

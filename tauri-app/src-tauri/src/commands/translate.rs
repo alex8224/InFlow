@@ -61,11 +61,18 @@ pub async fn translate_text_ai_stream(
     text: String,
     from_lang: String,
     to_lang: String,
+    provider_id: Option<String>,
     app: AppHandle,
 ) -> Result<(), String> {
     let config = AppConfig::load();
+
+    // Priority: Explicit provider_id > config.translate_provider_id > config.active_provider_id
+    let target_id = provider_id
+        .or(config.translate_provider_id)
+        .or(config.active_provider_id);
+
     let provider = config.llm_providers.iter()
-        .find(|p| Some(&p.id) == config.active_provider_id.as_ref())
+        .find(|p| Some(&p.id) == target_id.as_ref())
         .ok_or_else(|| "未找到激活的 AI 提供商".to_string())?;
 
     if provider.api_key.is_empty() {

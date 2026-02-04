@@ -30,6 +30,7 @@ pub struct AppConfig {
     pub google_api_key: Option<String>,
     pub llm_providers: Vec<LlmProvider>,
     pub active_provider_id: Option<String>,
+    pub translate_provider_id: Option<String>,
     pub preferred_service: String, // "google" or "ai"
     pub mcp_remote_servers: Vec<McpRemoteServer>,
 
@@ -144,6 +145,7 @@ impl AppConfig {
             google_api_key: None,
             llm_providers: Self::get_default_providers(),
             active_provider_id: Some("deepseek".to_string()),
+            translate_provider_id: None,
             preferred_service: "google".to_string(),
             mcp_remote_servers: Vec::new(),
             chat_system_prompt: None,

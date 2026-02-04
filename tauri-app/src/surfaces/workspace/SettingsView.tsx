@@ -189,10 +189,14 @@ export function SettingsView() {
                       {p.kind} • {p.modelId}
                     </div>
                   </div>
-                  {config.activeProviderId === p.id && (
-                    <CheckCircle2 className={cn("w-3.5 h-3.5 shrink-0", selectedId === p.id ? "text-white" : "text-green-500")} />
-                  )}
-                </button>
+                    {config.activeProviderId === p.id && (
+                      <CheckCircle2 className={cn("w-3.5 h-3.5 shrink-0", selectedId === p.id ? "text-white" : "text-green-500")} />
+                    )}
+                    {config.translateProviderId === p.id && (
+                      <Globe className={cn("w-3.5 h-3.5 shrink-0", selectedId === p.id ? "text-white" : "text-blue-500")} />
+                    )}
+                  </button>
+
               ))}
             </div>
           </Card>
@@ -251,18 +255,34 @@ export function SettingsView() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                   <Button 
-                    variant={config.activeProviderId === selectedId ? "default" : "outline"}
-                    size="sm"
-                    className="font-bold rounded-xl h-10 px-6 shadow-sm"
-                    onClick={() => {
-                        const newConfig = {...config, activeProviderId: selectedId};
-                        setConfig(newConfig);
-                        handleSave(newConfig);
-                    }}
-                   >
-                    {config.activeProviderId === selectedId ? "当前默认" : "设为默认"}
-                   </Button>
+                    <Button 
+                      variant={config.activeProviderId === selectedId ? "default" : "outline"}
+                      size="sm"
+                      className="font-bold rounded-xl h-10 px-6 shadow-sm"
+                      onClick={() => {
+                          const newConfig = {...config, activeProviderId: selectedId};
+                          setConfig(newConfig);
+                          handleSave(newConfig);
+                      }}
+                    >
+                      {config.activeProviderId === selectedId ? "当前默认" : "设为默认"}
+                    </Button>
+                    <Button 
+                      variant={config.translateProviderId === selectedId ? "default" : "outline"}
+                      size="sm"
+                      className={cn(
+                        "font-bold rounded-xl h-10 px-6 shadow-sm",
+                        config.translateProviderId === selectedId ? "bg-blue-600 hover:bg-blue-700" : ""
+                      )}
+                      onClick={() => {
+                          const newConfig = {...config, translateProviderId: selectedId};
+                          setConfig(newConfig);
+                          handleSave(newConfig);
+                      }}
+                    >
+                      {config.translateProviderId === selectedId ? "翻译默认" : "设为翻译"}
+                    </Button>
+
                    <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl text-destructive hover:bg-destructive/10 transition-colors" onClick={() => deleteProvider(selectedId!)}>
                      <Trash2 className="w-4.5 h-4.5" />
                    </Button>

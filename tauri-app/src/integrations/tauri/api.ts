@@ -22,6 +22,7 @@ export interface AppConfig {
   googleApiKey: string | null;
   llmProviders: LlmProvider[];
   activeProviderId: string | null;
+  translateProviderId: string | null;
   preferredService: string;
   mcpRemoteServers?: McpRemoteServer[];
 }
@@ -98,9 +99,10 @@ export async function translateText(
 export async function translateTextAiStream(
   text: string,
   fromLang: string,
-  toLang: string
+  toLang: string,
+  providerId?: string
 ): Promise<void> {
-  return await invoke('translate_text_ai_stream', { text, fromLang, toLang });
+  return await invoke('translate_text_ai_stream', { text, fromLang, toLang, providerId });
 }
 
 export async function saveApiKey(apiKey: string): Promise<boolean> {

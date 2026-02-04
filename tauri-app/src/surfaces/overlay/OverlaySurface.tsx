@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
 import { X, Globe, Zap, Sparkles, Bot, Plus, Trash2, Square, Pin, PinOff, Wrench, Share2, Check } from 'lucide-react';
-import { chatCancel, chatSessionCreate, getAppConfig, AppConfig, chatToolsCatalog, ToolCatalogItem, chatShareCreate, SharedMessage } from '../../integrations/tauri/api';
+import { chatCancel, chatSessionCreate, getAppConfig, AppConfig, chatToolsCatalog, ToolCatalogItem, chatShareCreate, SharedMessage, updateAppConfig } from '../../integrations/tauri/api';
 import { cn } from '../../lib/cn';
 import { useInvocationStore } from '../../stores/invocationStore';
 import { useChatStore } from '../../stores/chatStore';
@@ -166,6 +166,17 @@ export function OverlaySurface() {
     }
   };
 
+  const handleTranslateProviderChange = async (id: string) => {
+    if (!config) return;
+    const newConfig = { ...config, translateProviderId: id };
+    setConfig(newConfig);
+    try {
+      await updateAppConfig(newConfig);
+    } catch (err) {
+      console.error('Failed to update translate provider:', err);
+    }
+  };
+
   const handleDrag = async (e: React.MouseEvent) => {
     // Avoid starting a drag on double-click (Windows titlebar behavior is maximize/restore).
     if (e.detail > 1) return;
@@ -275,8 +286,14 @@ export function OverlaySurface() {
     return config?.activeProviderId ?? config?.llmProviders[0]?.id ?? null;
   }, [chatSessionProviderId, config]);
 
-  const currentProvider = config?.llmProviders.find((p) => p.id === config.activeProviderId);
-  const currentChatProvider = config?.llmProviders.find((p) => p.id === chatProviderId);
+  const currentProvider = useMemo(() => {
+    const id = config?.translateProviderId || config?.activeProviderId;
+    return config?.llmProviders.find((p) => p.id === id);
+  }, [config]);
+
+  const currentChatProvider = useMemo(() => {
+    return config?.llmProviders.find((p) => p.id === chatProviderId);
+  }, [config, chatProviderId]);
 
   const mcpCatalogByServer = useMemo(() => {
     const m = new Map<string, { serverId: string; serverName: string; items: ToolCatalogItem[] }>();
@@ -363,16 +380,16 @@ export function OverlaySurface() {
   };
 
   return (
-    /* Outermost container - Clean edge alignment for native window handling */
+    /* Outermost container - Clean edge alignment */
     <div className="w-full h-full bg-transparent font-sans antialiased select-none">
       
-      {/* The actual Card-like window - Removed large shadows to avoid clipping and allow native resizing at edges */}
+      {/* The actual Card-like window */}
       <div
         className={cn(
-          'w-full h-full bg-background text-foreground flex flex-col overflow-hidden',
+          'w-full h-full bg-background text-foreground flex flex-col overflow-hidden transition-all duration-200',
           isMaximized
             ? 'rounded-none border-0 shadow-none ring-0'
-            : 'rounded-2xl border border-border/60 ring-1 ring-black/10 dark:ring-white/10 app-window-frame'
+            : 'rounded-2xl border border-border/60 app-window-frame'
         )}
       >
         
@@ -394,27 +411,49 @@ export function OverlaySurface() {
           {/* Center Controls (Flexible) */}
           <div className="flex-1 min-w-0 flex justify-center">
             {isTranslate && (
-              <div className="flex bg-background/50 backdrop-blur-sm p-1 rounded-lg border border-border/50 scale-90 origin-center shrink-0">
-                <button
-                  onClick={() => setActiveService('google')}
-                  className={cn(
-                    "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold transition-all",
-                    activeService === 'google' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <Zap className={cn("w-3 h-3", activeService === 'google' ? "text-yellow-500 fill-yellow-500" : "")} />
-                  <span className="hidden xs:inline">极速</span>
-                </button>
-                <button
-                  onClick={() => setActiveService('ai')}
-                  className={cn(
-                    "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold transition-all",
-                    activeService === 'ai' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <Sparkles className={cn("w-3 h-3", activeService === 'ai' ? "text-blue-500 fill-blue-500" : "")} />
-                  <span className="hidden xs:inline">AI</span>
-                </button>
+              <div className="flex items-center gap-2 bg-background/50 backdrop-blur-sm p-1 rounded-lg border border-border/50 scale-90 origin-center shrink-0">
+                <div className="flex bg-muted/20 rounded-md p-0.5 shrink-0">
+                  <button
+                    onClick={() => setActiveService('google')}
+                    className={cn(
+                      "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold transition-all",
+                      activeService === 'google' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <Zap className={cn("w-3 h-3", activeService === 'google' ? "text-yellow-500 fill-yellow-500" : "")} />
+                    <span className="hidden xs:inline">极速</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveService('ai')}
+                    className={cn(
+                      "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold transition-all",
+                      activeService === 'ai' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <Sparkles className={cn("w-3 h-3", activeService === 'ai' ? "text-blue-500 fill-blue-500" : "")} />
+                    <span className="hidden xs:inline">AI</span>
+                  </button>
+                </div>
+
+                {activeService === 'ai' && config && (
+                  <div className="flex items-center gap-1.5 pl-1.5 border-l border-border/40 shrink-0">
+                    <Select 
+                      value={config.translateProviderId || config.activeProviderId || ''} 
+                      onValueChange={handleTranslateProviderChange}
+                    >
+                      <SelectTrigger className="h-6 min-w-0 w-24 rounded-md bg-transparent border-none shadow-none text-[10px] font-black px-1 gap-1 focus:ring-0 uppercase tracking-tighter">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {config.llmProviders.map((p) => (
+                          <SelectItem key={p.id} value={p.id} className="text-[11px] font-bold">
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             )}
 
