@@ -509,7 +509,7 @@ export function ChatOverlayView() {
         className={cn(
           'select-text',
           m.role === 'user'
-            ? 'max-w-[min(720px,90%)] rounded-2xl border px-4 py-3 shadow-sm bg-foreground text-background border-foreground/10'
+            ? 'max-w-[min(720px,90%)] rounded-2xl border px-4 py-3 shadow-sm bg-muted/80 text-foreground border-border/50'
             : 'w-full max-w-4xl px-1 py-1 bg-transparent text-foreground'
         )}
       >
@@ -518,12 +518,12 @@ export function ChatOverlayView() {
             {m.parts.map((p, i) => (
               <div key={i}>
                 {p.type === 'markdown' && (
-                  <div className="text-sm font-semibold leading-relaxed whitespace-pre-wrap break-words text-background/95 select-text">
+                  <div className="text-sm font-semibold leading-relaxed whitespace-pre-wrap break-words text-foreground/90 select-text">
                     {p.content}
                   </div>
                 )}
                 {p.type === 'image' && (
-                  <div className="rounded-lg overflow-hidden border border-background/10 bg-background/5">
+                  <div className="rounded-lg overflow-hidden border border-border/50 bg-background/50">
                     <img src={p.content} alt="User upload" className="max-w-full h-auto object-contain max-h-[300px]" />
                   </div>
                 )}
