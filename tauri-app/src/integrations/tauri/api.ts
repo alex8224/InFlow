@@ -118,3 +118,35 @@ export async function getAppConfig(): Promise<AppConfig> {
 export async function updateAppConfig(config: AppConfig): Promise<void> {
   await invoke('update_app_config', { config });
 }
+
+// Share API types
+export interface SharedMessage {
+  id: string;
+  role: string;
+  content: string;
+  created_at: number;
+}
+
+export interface ShareCreateResponse {
+  share_id: string;
+  url: string;
+}
+
+// Create a share for the current chat session
+export async function chatShareCreate(
+  sessionId: string,
+  messages: SharedMessage[],
+  providerName?: string
+): Promise<ShareCreateResponse> {
+  const messagesJson = JSON.stringify(messages);
+  return await invoke('chat_share_create', {
+    sessionId,
+    messagesJson,
+    providerName,
+  });
+}
+
+// Get the share server port
+export async function getShareServerPort(): Promise<number | null> {
+  return await invoke('get_share_server_port');
+}

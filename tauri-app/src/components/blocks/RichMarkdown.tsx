@@ -95,15 +95,23 @@ function transformMathInPlainTextSegment(text: string): string {
 
   // Block math: \[ ... \] -> $$ ... $$
   // Add newlines around to keep it a proper block.
-  t = t.replace(/\\\[([\s\S]*?)\\\]/g, (_m, inner: string) => {
+  t = t.replace(/\\\[([\\s\\S]*?)\\\]/g, (_m, inner: string) => {
     const body = String(inner ?? '').trim();
     return `\n$$\n${body}\n$$\n`;
   });
 
   // Inline math: \( ... \) -> $ ... $
-  t = t.replace(/\\\(([\s\S]*?)\\\)/g, (_m, inner: string) => {
+  t = t.replace(/\\\(([\\s\\S]*?)\\\)/g, (_m, inner: string) => {
     const body = String(inner ?? '').trim();
     return `$${body}$`;
+  });
+
+  // Fix block math with internal newlines - ensure $$ is on its own line
+  // This helps remarkMath parse multi-line block formulas correctly
+  t = t.replace(/\$\$([^$]+)\$\$/g, (_m, inner: string) => {
+    const body = String(inner ?? '').trim();
+    // Ensure the block math is properly formatted with newlines
+    return `\n$$\n${body}\n$$\n`;
   });
 
   return t;

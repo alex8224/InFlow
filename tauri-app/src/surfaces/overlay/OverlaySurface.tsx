@@ -1,8 +1,8 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
-import { X, Globe, Zap, Sparkles, Bot, Plus, Trash2, Square, Pin, PinOff, Wrench } from 'lucide-react';
-import { chatCancel, chatSessionCreate, getAppConfig, AppConfig, chatToolsCatalog, ToolCatalogItem } from '../../integrations/tauri/api';
+import { X, Globe, Zap, Sparkles, Bot, Plus, Trash2, Square, Pin, PinOff, Wrench, Share2, Check } from 'lucide-react';
+import { chatCancel, chatSessionCreate, getAppConfig, AppConfig, chatToolsCatalog, ToolCatalogItem, chatShareCreate, SharedMessage } from '../../integrations/tauri/api';
 import { cn } from '../../lib/cn';
 import { useInvocationStore } from '../../stores/invocationStore';
 import { useChatStore } from '../../stores/chatStore';
@@ -33,10 +33,13 @@ export function OverlaySurface() {
   const chatResetSession = useChatStore((s) => s.resetSession);
   const chatClearConversation = useChatStore((s) => s.clearConversation);
   const chatSetSession = useChatStore((s) => s.setSession);
+  const chatMessages = useChatStore((s) => s.messages);
 
   const [toolsOpen, setToolsOpen] = useState(false);
   const [toolsLoading, setToolsLoading] = useState(false);
   const [toolsCatalog, setToolsCatalog] = useState<ToolCatalogItem[]>([]);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   const toolsFetchedAtRef = useRef<number>(0);
   const toolsFetchInFlightRef = useRef<Promise<void> | null>(null);
@@ -316,6 +319,49 @@ export function OverlaySurface() {
     await chatCancel(chatSessionId);
   };
 
+  const handleChatShare = async () => {
+    if (!chatSessionId || chatMessages.length === 0) return;
+    
+    setShareLoading(true);
+    try {
+      // Convert chat messages to shared format
+      const sharedMessages: SharedMessage[] = chatMessages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => {
+          const content = m.parts
+            .filter((p) => p.type === 'markdown')
+            .map((p) => (p as { type: 'markdown'; content: string }).content)
+            .join('\n');
+          return {
+            id: m.id,
+            role: m.role,
+            content,
+            created_at: m.createdAt,
+          };
+        })
+        .filter((m) => m.content.trim() !== '');
+
+      if (sharedMessages.length === 0) {
+        console.warn('No messages to share');
+        return;
+      }
+
+      const providerName = currentChatProvider?.name ?? undefined;
+      const result = await chatShareCreate(chatSessionId, sharedMessages, providerName);
+      
+      // Copy URL to clipboard
+      await navigator.clipboard.writeText(result.url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+      
+      console.log('[share] Created share:', result.url);
+    } catch (err) {
+      console.error('Failed to create share:', err);
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
   return (
     /* Outermost container - Clean edge alignment for native window handling */
     <div className="w-full h-full bg-transparent font-sans antialiased select-none">
@@ -431,6 +477,22 @@ export function OverlaySurface() {
                 </button>
 
                 <div className="hidden sm:flex items-center gap-1">
+                  <button
+                    onClick={handleChatShare}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    disabled={shareLoading || chatMessages.length === 0}
+                    className={cn(
+                      "h-7 w-7 flex items-center justify-center rounded-lg transition-all active:scale-90 border border-transparent hover:border-border/40",
+                      shareLoading || chatMessages.length === 0
+                        ? "text-muted-foreground/40 cursor-not-allowed"
+                        : shareCopied
+                          ? "text-green-500 bg-green-500/10"
+                          : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                    )}
+                    title={shareCopied ? "Link copied!" : "Share chat"}
+                  >
+                    {shareCopied ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
+                  </button>
                   <button
                     onClick={handleChatNew}
                     onMouseDown={(e) => e.stopPropagation()}

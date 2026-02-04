@@ -13,6 +13,7 @@ mod llm_tools;
 mod windowing;
 mod deeplink;
 mod commands;
+mod share_server;
 
 use state::AppState;
 use commands::*;
@@ -120,6 +121,16 @@ pub fn run() {
                 });
             }
 
+            // Start the share server in the background (delayed to avoid blocking startup)
+            std::thread::spawn(|| {
+                // Small delay to ensure main app is fully initialized
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                match crate::share_server::start_server() {
+                    Ok(port) => println!("[share-server] Started on port {}", port),
+                    Err(e) => eprintln!("[share-server] Failed to start: {}", e),
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -138,6 +149,8 @@ pub fn run() {
             misc::close_overlay,
             misc::open_workspace,
             misc::get_clipboard_text,
+            share::chat_share_create,
+            share::get_share_server_port,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
