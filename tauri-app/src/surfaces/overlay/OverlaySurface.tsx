@@ -853,7 +853,10 @@ export function OverlaySurface() {
           {renderContent()}
         </div>
 
-        <footer className="px-6 h-10 bg-muted/30 border-t border-border/40 flex justify-between items-center shrink-0 select-none">
+        <footer className={cn(
+          "px-6 h-10 bg-muted/30 border-t border-border/40 flex justify-between items-center shrink-0 select-none",
+          isChat && "hidden"
+        )}>
           <div className="flex items-center gap-2.5">
             <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_12px_rgba(34,197,94,0.8)] animate-pulse" />
             <span className="text-[9px] font-black uppercase tracking-[0.3em] text-muted-foreground/60">
