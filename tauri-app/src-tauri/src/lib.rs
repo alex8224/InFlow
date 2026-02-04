@@ -29,6 +29,8 @@ pub fn run() {
             last_active_by_type: Mutex::new(HashMap::new()),
             chat_sessions: Mutex::new(HashMap::new()),
             chat_cancel_flags: Mutex::new(HashMap::new()),
+            translate_cancel_flags: Mutex::new(HashMap::new()),
+            translate_cancel_notifiers: Mutex::new(HashMap::new()),
             mcp_tools_cache: Mutex::new(HashMap::new()),
             mcp_sessions: Mutex::new(HashMap::new()),
             is_quitting: AtomicBool::new(false),
@@ -136,6 +138,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             translate::translate_text,
             translate::translate_text_ai_stream,
+            translate::translate_cancel,
             app::get_app_config,
             app::update_app_config,
             app::get_api_key_status,

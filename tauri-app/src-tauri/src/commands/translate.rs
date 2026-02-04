@@ -1,9 +1,13 @@
-use tauri::{AppHandle, Emitter};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use tauri::{AppHandle, State, Emitter};
 use genai::chat::{ChatMessage, ChatRequest, ChatStreamEvent};
 use futures::StreamExt;
 use crate::config::AppConfig;
 use crate::genai_client::{build_genai_client, resolve_genai_model};
 use crate::types::TranslateResponse;
+use crate::state::AppState;
 
 #[tauri::command]
 pub async fn translate_text(
@@ -63,8 +67,41 @@ pub async fn translate_text_ai_stream(
     to_lang: String,
     provider_id: Option<String>,
     app: AppHandle,
+    state: State<'_, AppState>,
 ) -> Result<(), String> {
     let config = AppConfig::load();
+    let window_label = "overlay".to_string();
+
+    // 1. Cancel any existing task first
+    {
+        let notifiers = state.translate_cancel_notifiers.lock().unwrap();
+        if let Some(n) = notifiers.get(&window_label) {
+            n.notify_waiters();
+        }
+    }
+    {
+        let flags = state.translate_cancel_flags.lock().unwrap();
+        if let Some(f) = flags.get(&window_label) {
+            f.store(true, Ordering::SeqCst);
+        }
+    }
+
+    // 2. Prepare new cancel flag and notifier
+    let (cancel_flag, cancel_notify) = {
+        let mut flags = state.translate_cancel_flags.lock().unwrap();
+        let f = flags
+            .entry(window_label.clone())
+            .or_insert_with(|| Arc::new(AtomicBool::new(false)))
+            .clone();
+        f.store(false, Ordering::SeqCst);
+
+        let mut notifiers = state.translate_cancel_notifiers.lock().unwrap();
+        let n = notifiers
+            .entry(window_label.clone())
+            .or_insert_with(|| Arc::new(tokio::sync::Notify::new()))
+            .clone();
+        (f, n)
+    };
 
     // Priority: Explicit provider_id > config.translate_provider_id > config.active_provider_id
     let target_id = provider_id
@@ -90,8 +127,12 @@ pub async fn translate_text_ai_stream(
 
     println!("Final genai Model String: {}", model);
 
+    let system_prompt = config.translate_system_prompt.clone().unwrap_or_else(|| {
+        "You are a professional translator. Only provide translated text.".to_string()
+    });
+
     let chat_req = ChatRequest::new(vec![
-        ChatMessage::system("You are a professional translator. Only provide translated text."),
+        ChatMessage::system(system_prompt),
         ChatMessage::user(format!("Translate from {} to {}: {}", from_lang, to_lang, text)),
     ]);
 
@@ -110,21 +151,64 @@ pub async fn translate_text_ai_stream(
     let mut actual_stream = stream_res.stream;
 
     println!("--- AI Debug: Response Stream Started ---");
-    while let Some(event_res) = actual_stream.next().await {
-        let event = event_res.map_err(|e| format!("流读取失败: {}", e))?;
-        match &event {
-            ChatStreamEvent::Chunk(chunk) => {
-                let _ = app.emit("translation-token", chunk.content.clone());
+    loop {
+        tokio::select! {
+            // Priority 1: Check cancellation
+            _ = cancel_notify.notified() => {
+                println!("--- AI Debug: Translation Cancelled via Notify ---");
+                break;
             }
-            ChatStreamEvent::End(end) => {
-                println!("--- AI Debug: Stream Ended ---");
-                if let Some(usage) = &end.captured_usage {
-                    println!("Usage: {:?}", usage);
+            // Priority 2: Get next stream item
+            event_res = actual_stream.next() => {
+                match event_res {
+                    Some(res) => {
+                        if cancel_flag.load(Ordering::SeqCst) {
+                            println!("--- AI Debug: Translation Cancelled via Flag ---");
+                            break;
+                        }
+
+                        let event: ChatStreamEvent = res.map_err(|e| format!("流读取失败: {}", e))?;
+                        match &event {
+                            ChatStreamEvent::Chunk(chunk) => {
+                                let _ = app.emit("translation-token", chunk.content.clone());
+                            }
+                            ChatStreamEvent::End(end) => {
+                                println!("--- AI Debug: Stream Ended ---");
+                                if let Some(usage) = &end.captured_usage {
+                                    println!("Usage: {:?}", usage);
+                                }
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                    None => break,
                 }
             }
-            _ => {}
         }
     }
 
+    Ok(())
+}
+
+#[tauri::command]
+pub fn translate_cancel(state: State<'_, AppState>) -> Result<(), String> {
+    let window_label = "overlay".to_string();
+    
+    // Trigger notify
+    if let Some(notifier) = state.translate_cancel_notifiers.lock().unwrap().get(&window_label) {
+        notifier.notify_waiters();
+    }
+
+    // Set flag for safety
+    if let Some(flag) = state
+        .translate_cancel_flags
+        .lock()
+        .unwrap()
+        .get(&window_label)
+        .cloned()
+    {
+        flag.store(true, Ordering::SeqCst);
+    }
     Ok(())
 }

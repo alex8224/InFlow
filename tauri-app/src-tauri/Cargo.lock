@@ -4540,6 +4540,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
  "tiny_http",
+ "tokio",
  "tokio-stream",
  "url",
  "uuid",

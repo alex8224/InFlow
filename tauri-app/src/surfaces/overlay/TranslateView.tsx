@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Copy, RotateCcw, ArrowRight, Globe, Languages, Sparkles } from 'lucide-react';
+import { Copy, RotateCcw, ArrowRight, Globe, Languages, Sparkles, Square } from 'lucide-react';
 import { RichMarkdown } from '../../components/blocks/RichMarkdown';
 import { listen } from '@tauri-apps/api/event';
 import { Button } from '../../components/ui/button';
@@ -11,7 +11,7 @@ import {
   SelectTrigger, 
   SelectValue
 } from '../../components/ui/select';
-import { translateText, translateTextAiStream, getAppConfig, AppConfig, getClipboardText } from '../../integrations/tauri/api';
+import { translateText, translateTextAiStream, translateCancel, getAppConfig, AppConfig, getClipboardText } from '../../integrations/tauri/api';
 import { cn } from '../../lib/cn';
 import { useInvocationStore } from '../../stores/invocationStore';
 
@@ -135,6 +135,15 @@ export function TranslateView() {
 
   const handleTranslate = () => handleTranslateInternal(inputText, fromLang, toLang);
 
+  const handleStop = async () => {
+    setIsTranslating(false);
+    try {
+      await translateCancel();
+    } catch (err) {
+      console.error('Failed to cancel translation:', err);
+    }
+  };
+
   const handleCopy = async () => {
     if (translatedText) {
       await navigator.clipboard.writeText(translatedText);
@@ -214,13 +223,19 @@ export function TranslateView() {
         </div>
 
         <Button
-          onClick={handleTranslate}
-          disabled={isTranslating || !inputText.trim()}
-          className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold px-0 h-8 w-24 rounded-lg shadow-lg shadow-primary/20 active:scale-95 transition-all ml-2 shrink-0"
+          onClick={isTranslating ? handleStop : handleTranslate}
+          disabled={!isTranslating && !inputText.trim()}
+          className={cn(
+            "font-bold px-0 h-8 w-24 rounded-lg shadow-lg active:scale-95 transition-all ml-2 shrink-0",
+            isTranslating 
+              ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-destructive/20" 
+              : "bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary/20"
+          )}
         >
           {isTranslating ? (
-            <div className="flex items-center justify-center">
-              <div className="w-3.5 h-3.5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+            <div className="flex items-center justify-center gap-2">
+              <Square className="w-3.5 h-3.5 fill-current" />
+              <span>停止</span>
             </div>
           ) : (
             <div className="flex items-center justify-center gap-2">

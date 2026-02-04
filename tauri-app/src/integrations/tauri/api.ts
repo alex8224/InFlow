@@ -23,6 +23,7 @@ export interface AppConfig {
   llmProviders: LlmProvider[];
   activeProviderId: string | null;
   translateProviderId: string | null;
+  translateSystemPrompt: string | null;
   preferredService: string;
   mcpRemoteServers?: McpRemoteServer[];
 }
@@ -103,6 +104,10 @@ export async function translateTextAiStream(
   providerId?: string
 ): Promise<void> {
   return await invoke('translate_text_ai_stream', { text, fromLang, toLang, providerId });
+}
+
+export async function translateCancel(): Promise<void> {
+  return await invoke('translate_cancel');
 }
 
 export async function saveApiKey(apiKey: string): Promise<boolean> {

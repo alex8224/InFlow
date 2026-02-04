@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
-import { X, Globe, Zap, Sparkles, Bot, Plus, Trash2, Square, Pin, PinOff, Wrench, Share2, Check } from 'lucide-react';
+import { X, Globe, Zap, Sparkles, Bot, Plus, Trash2, Square, Pin, PinOff, Wrench, Share2, Check, Settings } from 'lucide-react';
 import { chatCancel, chatSessionCreate, getAppConfig, AppConfig, chatToolsCatalog, ToolCatalogItem, chatShareCreate, SharedMessage, updateAppConfig } from '../../integrations/tauri/api';
 import { cn } from '../../lib/cn';
 import { useInvocationStore } from '../../stores/invocationStore';
@@ -40,6 +40,7 @@ export function OverlaySurface() {
   const [toolsCatalog, setToolsCatalog] = useState<ToolCatalogItem[]>([]);
   const [shareLoading, setShareLoading] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [showTranslateSettings, setShowTranslateSettings] = useState(false);
 
   const toolsFetchedAtRef = useRef<number>(0);
   const toolsFetchInFlightRef = useRef<Promise<void> | null>(null);
@@ -235,7 +236,50 @@ export function OverlaySurface() {
     
     if (view) {
       const Component = view.component;
-      return <Component />;
+      return (
+        <div className="flex-1 flex flex-col min-h-0 relative">
+          <Component />
+          {isTranslate && showTranslateSettings && config && (
+            <div className="absolute inset-0 bg-background/95 backdrop-blur-md z-[100] p-4 flex flex-col gap-4 animate-in fade-in slide-in-from-left-2 duration-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-black uppercase tracking-widest text-primary flex items-center gap-2">
+                  <Settings className="w-3.5 h-3.5" />
+                  翻译设置
+                </h3>
+                <button onClick={() => setShowTranslateSettings(false)} className="text-muted-foreground hover:text-foreground">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              
+              <div className="flex-1 flex flex-col gap-2 overflow-hidden">
+                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">AI 翻译系统提示词 (System Prompt)</label>
+                <textarea 
+                  className="flex-1 w-full p-3 rounded-xl bg-muted/20 border border-border/50 text-xs font-medium resize-none focus:outline-none focus:ring-1 focus:ring-primary/20 custom-scrollbar"
+                  placeholder="例如: 你是一个资深翻译家，请将以下内容翻译成地道的中文..."
+                  value={config.translateSystemPrompt || ''}
+                  onChange={(e) => {
+                    const newConfig = { ...config, translateSystemPrompt: e.target.value };
+                    setConfig(newConfig);
+                    updateAppConfig(newConfig);
+                  }}
+                />
+                <p className="text-[10px] text-muted-foreground italic">
+                  * 留空将使用系统默认提示词
+                </p>
+              </div>
+              
+              <div className="flex justify-end pt-2">
+                <button 
+                  onClick={() => setShowTranslateSettings(false)}
+                  className="px-6 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl shadow-lg shadow-primary/20 active:scale-95 transition-all"
+                >
+                  完成
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
     }
 
     return (
@@ -401,10 +445,16 @@ export function OverlaySurface() {
           className="flex items-center px-3 h-11 bg-muted/20 border-b border-border/30 select-none cursor-grab active:cursor-grabbing shrink-0 relative gap-2"
         >
           {/* Left Brand */}
-          <div className="flex items-center gap-2 pointer-events-none text-left shrink-0">
-            <div className="bg-primary/5 p-1.5 rounded-lg text-primary shadow-sm border border-primary/10">
-              {isChat ? <Bot className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
-            </div>
+          <div className="flex items-center gap-2 text-left shrink-0">
+            <button 
+              onClick={() => isTranslate && setShowTranslateSettings(!showTranslateSettings)}
+              className={cn(
+                "bg-primary/5 p-1.5 rounded-lg text-primary shadow-sm border border-primary/10 transition-all active:scale-95",
+                isTranslate && "hover:bg-primary/10 cursor-pointer"
+              )}
+            >
+              {isTranslate && showTranslateSettings ? <Settings className="w-4 h-4" /> : (isChat ? <Bot className="w-4 h-4" /> : <Globe className="w-4 h-4" />)}
+            </button>
             <span className="font-black text-[11px] tracking-widest uppercase opacity-80 hidden sm:block">inFlow</span>
           </div>
 
