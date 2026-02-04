@@ -147,6 +147,7 @@ pub fn run() {
             chat::chat_stream,
             chat::chat_cancel,
             chat::chat_tools_catalog,
+            chat::chat_infer_title,
             capability::execute_capability,
             capability::get_current_invocation,
             misc::show_overlay,

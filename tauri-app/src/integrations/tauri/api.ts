@@ -63,6 +63,10 @@ export async function chatCancel(sessionId: string): Promise<void> {
   await invoke('chat_cancel', { sessionId });
 }
 
+export async function chatInferTitle(sessionId: string, providerId: string): Promise<string> {
+  return await invoke('chat_infer_title', { sessionId, providerId });
+}
+
 export async function executeCapability(
   capabilityId: string,
   args?: Record<string, unknown>,

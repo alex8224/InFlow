@@ -1,15 +1,19 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{AppHandle, Emitter, State};
-use genai::chat::{ChatMessage, ChatOptions, ChatRequest, ChatStreamEvent, Tool, ToolCall, ToolResponse};
-use futures::StreamExt;
 use crate::config::{AppConfig, McpRemoteServer};
-use crate::state::{AppState, ChatSession};
-use crate::types::{ChatSessionCreateResponse, ChatEndEvent, ChatTokenEvent, ChatToolCallEvent, ChatToolResultEvent};
 use crate::genai_client::{build_genai_client, resolve_genai_model, strip_system_reminder};
 use crate::llm_tools;
+use crate::state::{AppState, ChatSession};
+use crate::types::{
+    ChatEndEvent, ChatSessionCreateResponse, ChatTokenEvent, ChatToolCallEvent, ChatToolResultEvent,
+};
+use futures::StreamExt;
+use genai::chat::{
+    ChatMessage, ChatOptions, ChatRequest, ChatStreamEvent, Tool, ToolCall, ToolResponse,
+};
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, State};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "content", rename_all = "camelCase")]
@@ -77,7 +81,9 @@ fn load_system_prompt_from_prompts_md() -> Option<String> {
 }
 
 #[tauri::command]
-pub fn chat_session_create(state: State<'_, AppState>) -> Result<ChatSessionCreateResponse, String> {
+pub fn chat_session_create(
+    state: State<'_, AppState>,
+) -> Result<ChatSessionCreateResponse, String> {
     let session_id = uuid::Uuid::new_v4().to_string();
 
     {
@@ -155,11 +161,7 @@ pub async fn chat_stream(
 
     println!(
         "[chat] start session_id={} provider_id={} kind={} model_id={} base_url={:?}",
-        session_id,
-        provider.id,
-        provider.kind,
-        provider.model_id,
-        provider.base_url
+        session_id, provider.id, provider.kind, provider.model_id, provider.base_url
     );
 
     let (cancel_flag, cancel_notify) = {
@@ -182,11 +184,9 @@ pub async fn chat_stream(
     // Ensure session exists
     {
         let mut sessions = state.chat_sessions.lock().unwrap();
-        sessions
-            .entry(session_id.clone())
-            .or_insert(ChatSession {
-                messages: Vec::new(),
-            });
+        sessions.entry(session_id.clone()).or_insert(ChatSession {
+            messages: Vec::new(),
+        });
     }
 
     // Append user message
@@ -209,11 +209,11 @@ pub async fn chat_stream(
                     } else {
                         ("image/png".to_string(), b64.as_str())
                     };
-                    
+
                     genai_parts.push(genai::chat::ContentPart::Binary(genai::chat::Binary::new(
-                        mime, 
-                        genai::chat::BinarySource::Base64(data_b64.to_string().into()), 
-                        None
+                        mime,
+                        genai::chat::BinarySource::Base64(data_b64.to_string().into()),
+                        None,
                     )));
                 }
             }
@@ -239,16 +239,25 @@ pub async fn chat_stream(
     if debug {
         let mut sel: Vec<String> = selected.iter().cloned().collect();
         sel.sort();
-        println!("[chat][debug] selected_tools_count={} selected_tools={}", sel.len(), sel.join(","));
+        println!(
+            "[chat][debug] selected_tools_count={} selected_tools={}",
+            sel.len(),
+            sel.join(",")
+        );
     }
 
-    let genai_tools: Vec<Tool> = llm_tools::build_genai_tools(&selected, &provider, &config, &state).await?;
+    let genai_tools: Vec<Tool> =
+        llm_tools::build_genai_tools(&selected, &provider, &config, &state).await?;
     if !genai_tools.is_empty() {
         println!("[chat] tools enabled count={}", genai_tools.len());
     }
     if debug {
         let names: Vec<String> = genai_tools.iter().map(|t| t.name.clone()).collect();
-        println!("[chat][debug] tools_sent_to_model_count={} tools={}", names.len(), names.join(","));
+        println!(
+            "[chat][debug] tools_sent_to_model_count={} tools={}",
+            names.len(),
+            names.join(",")
+        );
     }
 
     let server_map: BTreeMap<String, McpRemoteServer> = config
@@ -420,7 +429,11 @@ pub async fn chat_stream(
         if debug && !tool_calls.is_empty() {
             let mut names: Vec<String> = tool_calls.iter().map(|t| t.fn_name.clone()).collect();
             names.sort();
-            println!("[chat][debug] tool_calls_captured_count={} fn_names={}", names.len(), names.join(","));
+            println!(
+                "[chat][debug] tool_calls_captured_count={} fn_names={}",
+                names.len(),
+                names.join(",")
+            );
         }
         let assistant_text = captured_text.or_else(|| {
             if streamed_text.trim().is_empty() {
@@ -484,7 +497,8 @@ pub async fn chat_stream(
             };
 
             if debug {
-                let args_str = serde_json::to_string(&effective_args).unwrap_or_else(|_| "<unserializable>".to_string());
+                let args_str = serde_json::to_string(&effective_args)
+                    .unwrap_or_else(|_| "<unserializable>".to_string());
                 println!(
                     "[chat][debug] tool_call execute call_id={} fn_name={} args={}",
                     tc.call_id, tc.fn_name, args_str
@@ -526,9 +540,10 @@ pub async fn chat_stream(
 
                 let mut sessions = state.chat_sessions.lock().unwrap();
                 if let Some(session) = sessions.get_mut(&session_id) {
-                    session
-                        .messages
-                        .push(ChatMessage::from(ToolResponse::new(tc.call_id.clone(), err)));
+                    session.messages.push(ChatMessage::from(ToolResponse::new(
+                        tc.call_id.clone(),
+                        err,
+                    )));
                 }
                 continue;
             }
@@ -606,7 +621,72 @@ pub async fn chat_stream(
 }
 
 #[tauri::command]
-pub async fn chat_tools_catalog(state: State<'_, AppState>) -> Result<Vec<llm_tools::ToolCatalogItem>, String> {
+pub async fn chat_infer_title(
+    session_id: String,
+    provider_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let history = {
+        let sessions = state.chat_sessions.lock().unwrap();
+        sessions
+            .get(&session_id)
+            .map(|s| s.messages.clone())
+            .ok_or_else(|| "会话不存在".to_string())?
+    };
+
+    if history.is_empty() {
+        return Ok("新会话".to_string());
+    }
+
+    let config = AppConfig::load();
+    let provider = config
+        .llm_providers
+        .iter()
+        .find(|p| p.id == provider_id)
+        .cloned()
+        .ok_or_else(|| "未找到指定的模型提供商".to_string())?;
+
+    let client = build_genai_client(&provider)?;
+    let model = resolve_genai_model(&provider);
+
+    let system = "Generate a very brief, concise title (2-5 words) for the conversation based on the user's input. Respond ONLY with the title text, no quotes or punctuation. Prefer Chinese if the input is in Chinese.";
+
+    println!("[chat] infer_title history_len={}", history.len());
+
+    // Focus on user messages to extract intent
+    let user_messages: Vec<_> = history.into_iter().filter(|m| m.role == genai::chat::Role::User).collect();
+    
+    if user_messages.is_empty() {
+        return Ok("新会话".to_string());
+    }
+
+    let req = ChatRequest::new(user_messages).with_system(system);
+
+    let res = client
+        .exec_chat(&model, req, None)
+        .await
+        .map_err(|e| {
+            println!("[chat] infer_title failed: {}", e);
+            e.to_string()
+        })?;
+
+    let title = res.into_first_text().unwrap_or_else(|| "新会话".to_string());
+    println!("[chat] inferred title raw: {}", title);
+
+    let title = title
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim()
+        .to_string();
+
+    Ok(title)
+}
+
+#[tauri::command]
+pub async fn chat_tools_catalog(
+    state: State<'_, AppState>,
+) -> Result<Vec<llm_tools::ToolCatalogItem>, String> {
     let config = AppConfig::load();
     llm_tools::catalog(&config, &state).await
 }

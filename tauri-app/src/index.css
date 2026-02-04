@@ -188,10 +188,26 @@
    * Uses inset outline so the edge stays visible even when box-shadow is clipped.
    */
   .app-window-frame {
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+    box-shadow: 
+      inset 0 0 0 1px rgba(0, 0, 0, 0.05),
+      0 10px 30px -10px rgba(0, 0, 0, 0.1);
   }
   .dark .app-window-frame {
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+    box-shadow: 
+      inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+      0 20px 40px -15px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Smooth Typography */
+  .prose {
+    --tw-prose-body: hsl(var(--foreground) / 0.9);
+    --tw-prose-headings: hsl(var(--foreground));
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Selection highlight */
+  ::selection {
+    @apply bg-primary/10 text-primary;
   }
 
   .custom-scrollbar::-webkit-scrollbar {

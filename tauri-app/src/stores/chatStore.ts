@@ -29,6 +29,7 @@ export type ToolCallRecord = {
 
 type ChatStore = {
   sessionId: string | null;
+  sessionTitle: string | null;
   sessionProviderId: string | null;
   isStreaming: boolean;
   messages: ChatMessage[];
@@ -38,6 +39,7 @@ type ChatStore = {
   pendingImages: string[];
 
   setSession: (sessionId: string) => void;
+  setSessionTitle: (title: string) => void;
   setSessionProviderId: (providerId: string) => void;
   setInput: (value: string) => void;
   addPendingImage: (base64: string) => void;
@@ -65,6 +67,7 @@ function makeId(prefix: string) {
 
 export const useChatStore = create<ChatStore>((set, get) => ({
   sessionId: null,
+  sessionTitle: null,
   sessionProviderId: null,
   isStreaming: false,
   messages: [],
@@ -74,6 +77,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   pendingImages: [],
 
   setSession: (sessionId) => set({ sessionId }),
+  setSessionTitle: (title) => set({ sessionTitle: title }),
   setSessionProviderId: (providerId) => set({ sessionProviderId: providerId }),
   setInput: (value) => set({ input: value }),
   addPendingImage: (base64) => set({ pendingImages: [...get().pendingImages, base64] }),
@@ -83,6 +87,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   resetSession: () => {
     set({
       sessionId: null,
+      sessionTitle: null,
       isStreaming: false,
       messages: [],
       toolCalls: {},

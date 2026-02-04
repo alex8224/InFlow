@@ -5,7 +5,7 @@ import { Bot, Check, ChevronDown, ChevronRight, Copy, Image as ImageIcon, Send, 
 import { Button } from '../../components/ui/button';
 import { Textarea } from '../../components/ui/textarea';
 import { cn } from '../../lib/cn';
-import { chatSessionCreate, chatStream, getClipboardText } from '../../integrations/tauri/api';
+import { chatInferTitle, chatSessionCreate, chatStream, getClipboardText } from '../../integrations/tauri/api';
 import { useChatStore } from '../../stores/chatStore';
 import { useInvocationStore } from '../../stores/invocationStore';
 import { RichMarkdown } from '../../components/blocks/RichMarkdown';
@@ -38,6 +38,8 @@ export function ChatOverlayView() {
     setStreaming,
     upsertToolCall,
     setToolResult,
+    sessionTitle,
+    setSessionTitle,
   } = useChatStore();
   const activeAssistantMessageId = useRef<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -392,6 +394,13 @@ export function ChatOverlayView() {
         return p;
       });
       await chatStream(sid, currentProviderId, streamParts as any, selectedTools);
+
+      // Infer title if not set yet (after first message)
+      if (!sessionTitle && sid) {
+        chatInferTitle(sid, currentProviderId)
+          .then((title) => setSessionTitle(title))
+          .catch((err) => console.error('Failed to infer title:', err));
+      }
     } catch (err: any) {
       setStreaming(false);
       activeAssistantMessageId.current = null;
@@ -504,67 +513,83 @@ export function ChatOverlayView() {
   }, [setCopiedMsgId]);
 
   const renderedMessages = messages.map((m) => (
-    <div key={m.id} className={cn('flex w-full', m.role === 'user' ? 'justify-end' : 'justify-center')}>
+    <div key={m.id} className={cn('flex w-full mb-6', m.role === 'user' ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'select-text',
-          m.role === 'user'
-            ? 'max-w-[min(720px,90%)] rounded-2xl border px-4 py-3 shadow-sm bg-muted/80 text-foreground border-border/50'
-            : 'w-full max-w-4xl px-1 py-1 bg-transparent text-foreground'
+          'relative group flex gap-3',
+          m.role === 'user' ? 'flex-row-reverse max-w-[85%]' : 'w-full'
         )}
       >
-        {m.role === 'user' ? (
-          <div className="flex flex-col gap-3">
-            {m.parts.map((p, i) => (
-              <div key={i}>
-                {p.type === 'markdown' && (
-                  <div className="text-sm font-semibold leading-relaxed whitespace-pre-wrap break-words text-foreground/90 select-text">
-                    {p.content}
-                  </div>
-                )}
-                {p.type === 'image' && (
-                  <div className="rounded-lg overflow-hidden border border-border/50 bg-background/50">
-                    <img src={p.content} alt="User upload" className="max-w-full h-auto object-contain max-h-[300px]" />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="group relative">
-            {(() => {
-              const raw =
-                m.parts.find((p) => p.type === 'markdown')?.type === 'markdown'
-                  ? (m.parts.find((p) => p.type === 'markdown') as any).content
-                  : '';
-              const isActive = activeAssistantMessageId.current === m.id;
-              const showTyping = isStreaming && isActive && raw.trim() === '';
-              return (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => copyMessageMarkdown(m.id, raw)}
-                    disabled={!raw || !raw.trim()}
-                    className={cn(
-                      'absolute right-0 top-0 -translate-y-1/2 translate-x-1/2 h-8 w-8 rounded-xl border border-border/60 bg-background/80 backdrop-blur-sm shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity',
-                      (!raw || !raw.trim()) && 'opacity-0 pointer-events-none'
-                    )}
-                    title="复制 Markdown"
-                  >
-                    {copiedMsgId === m.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                  {showTyping ? (
-                    <div className="py-2">
-                      <TypingIndicator />
-                    </div>
-                  ) : (
-                    <RichMarkdown className="leading-relaxed selection:bg-primary/20 select-text" markdown={raw} />
-                  )}
-                </>
-              );
-            })()}
+        {/* Avatar/Icon for AI */}
+        {m.role === 'assistant' && (
+          <div className="shrink-0 mt-1">
+            <div className="w-8 h-8 rounded-xl bg-primary/5 border border-primary/10 flex items-center justify-center text-primary shadow-sm">
+              <Bot className="w-4 h-4" />
+            </div>
           </div>
         )}
+
+        <div
+          className={cn(
+            'select-text transition-all duration-200',
+            m.role === 'user'
+              ? 'rounded-2xl rounded-tr-sm border px-4 py-3 shadow-sm bg-primary text-primary-foreground border-primary/20'
+              : 'flex-1 pt-1.5'
+          )}
+        >
+          {m.role === 'user' ? (
+            <div className="flex flex-col gap-3">
+              {m.parts.map((p, i) => (
+                <div key={i}>
+                  {p.type === 'markdown' && (
+                    <div className="text-sm font-medium leading-relaxed whitespace-pre-wrap break-words select-text">
+                      {p.content}
+                    </div>
+                  )}
+                  {p.type === 'image' && (
+                    <div className="rounded-xl overflow-hidden border border-white/20 shadow-md">
+                      <img src={p.content} alt="User upload" className="max-w-full h-auto object-contain max-h-[400px]" />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="relative group">
+              {(() => {
+                const raw =
+                  m.parts.find((p) => p.type === 'markdown')?.type === 'markdown'
+                    ? (m.parts.find((p) => p.type === 'markdown') as any).content
+                    : '';
+                const isActive = activeAssistantMessageId.current === m.id;
+                const showTyping = isStreaming && isActive && raw.trim() === '';
+                return (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => copyMessageMarkdown(m.id, raw)}
+                      disabled={!raw || !raw.trim()}
+                      className={cn(
+                        'absolute -right-2 top-0 h-8 w-8 rounded-xl border border-border/60 bg-background/80 backdrop-blur-sm shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-muted active:scale-90',
+                        (!raw || !raw.trim()) && 'opacity-0 pointer-events-none'
+                      )}
+                      title="复制 Markdown"
+                    >
+                      {copiedMsgId === m.id ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                    {showTyping ? (
+                      <div className="py-2">
+                        <TypingIndicator />
+                      </div>
+                    ) : (
+                      <RichMarkdown className="leading-relaxed selection:bg-primary/20 select-text" markdown={raw} />
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   ));
@@ -611,55 +636,79 @@ export function ChatOverlayView() {
         </div>
 
         {toolCallEntries.length > 0 && (
-          <div className="shrink-0 rounded-lg border border-border/20 bg-muted/5 my-2 mx-4">
+          <div className="shrink-0 rounded-2xl border border-border/40 bg-muted/10 my-2 mx-4 overflow-hidden shadow-inner">
             <button
               type="button"
               onClick={() => setToolPanelOpen((v) => !v)}
-              className="w-full flex items-center justify-between gap-2 px-3 py-1.5"
+              className="w-full flex items-center justify-between gap-2 px-4 py-2 hover:bg-muted/20 transition-colors"
             >
-              <div className="flex items-center gap-2">
-                <Wrench className="w-3.5 h-3.5 text-muted-foreground" />
-                <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/80">
-                  Tool Calls ({toolCallEntries.length})
+              <div className="flex items-center gap-2.5">
+                <div className="flex -space-x-1.5">
+                  <div className="w-5 h-5 rounded-full bg-primary/10 border border-background flex items-center justify-center">
+                    <Wrench className="w-2.5 h-2.5 text-primary" />
+                  </div>
+                  {isAnyToolRunning && (
+                    <div className="w-5 h-5 rounded-full bg-amber-500/10 border border-background flex items-center justify-center animate-pulse">
+                      <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    </div>
+                  )}
+                </div>
+                <div className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground">
+                  System Tool Pipeline ({toolCallEntries.length})
                 </div>
               </div>
-              {toolPanelOpen ? (
-                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
-              )}
+              <div className="flex items-center gap-2">
+                {isAnyToolRunning && (
+                  <span className="text-[9px] font-bold text-amber-600/80 animate-pulse">EXECUTING...</span>
+                )}
+                {toolPanelOpen ? (
+                  <ChevronDown className="w-4 h-4 text-muted-foreground/60" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
+                )}
+              </div>
             </button>
 
             {toolPanelOpen && (
-              <div className="px-3 pb-3">
-                <div className="space-y-2 max-h-[160px] overflow-auto custom-scrollbar pr-1">
+              <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-200">
+                <div className="space-y-2 max-h-[200px] overflow-auto custom-scrollbar pr-1">
                   {toolCallEntries.map((c) => (
-                    <div key={c.callId} className="rounded-xl border border-border/50 bg-background/60 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="font-bold text-xs truncate">{c.name}</div>
+                    <div key={c.callId} className="rounded-xl border border-border/40 bg-background/40 p-3 font-mono text-[11px] group">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground/40">$</span>
+                          <span className="font-bold text-primary/80 truncate">{c.name}</span>
+                        </div>
                         <div
                           className={cn(
-                            'text-[9px] font-black uppercase tracking-widest',
+                            'text-[9px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded border',
                             c.status === 'started'
-                              ? 'text-amber-600'
+                              ? 'text-amber-600 bg-amber-500/5 border-amber-500/20'
                               : c.status === 'done'
-                                ? 'text-green-600'
-                                : 'text-destructive'
+                                ? 'text-green-600 bg-green-500/5 border-green-500/20'
+                                : 'text-destructive bg-destructive/5 border-destructive/20'
                           )}
                         >
                           {c.status}
                         </div>
                       </div>
-                      <pre className="mt-2 text-[10px] leading-relaxed bg-muted/30 rounded-lg p-2 overflow-auto">
-                        <code>{JSON.stringify(c.arguments ?? {}, null, 2)}</code>
-                      </pre>
+                      <div className="bg-muted/30 rounded-lg p-2 overflow-auto max-h-[100px] border border-border/10">
+                        <code className="text-muted-foreground leading-tight">
+                          {JSON.stringify(c.arguments ?? {}, null, 2)}
+                        </code>
+                      </div>
                       {c.result !== undefined && (
-                        <pre className="mt-2 text-[10px] leading-relaxed bg-muted/30 rounded-lg p-2 overflow-auto">
-                          <code>{typeof c.result === 'string' ? c.result : JSON.stringify(c.result, null, 2)}</code>
-                        </pre>
+                        <div className="mt-2 bg-primary/5 rounded-lg p-2 overflow-auto max-h-[120px] border border-primary/10">
+                          <div className="text-[9px] font-bold text-primary/40 uppercase mb-1">Output</div>
+                          <code className="text-primary/70 leading-tight">
+                            {typeof c.result === 'string' ? c.result : JSON.stringify(c.result, null, 2)}
+                          </code>
+                        </div>
                       )}
                       {c.error && (
-                        <div className="mt-2 text-[10px] font-bold text-destructive">{c.error}</div>
+                        <div className="mt-2 text-[10px] font-bold text-destructive bg-destructive/5 p-2 rounded-lg border border-destructive/20">
+                          {c.error}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -686,7 +735,7 @@ export function ChatOverlayView() {
             </div>
           )}
 
-          <div className="rounded-2xl border border-border/50 bg-muted/20 p-2">
+          <div className="rounded-2xl border border-border/60 bg-muted/10 p-2 shadow-sm transition-all focus-within:shadow-md focus-within:border-primary/20">
             <div className="relative flex flex-col">
               <input
                 type="file"
@@ -704,8 +753,8 @@ export function ChatOverlayView() {
                   setInput(e.target.value);
                 }}
                 onPaste={handlePaste}
-                placeholder="输入消息…"
-                className="min-h-[52px] max-h-[180px] resize-none bg-background border-border/50 rounded-xl pl-4 pr-24 py-3 text-sm leading-relaxed select-text"
+                placeholder="Message inFlow..."
+                className="min-h-[52px] max-h-[200px] resize-none bg-transparent border-none shadow-none focus-visible:ring-0 rounded-xl pl-4 pr-24 py-3 text-sm font-medium leading-relaxed select-text placeholder:text-muted-foreground/50"
                 onKeyDown={(e) => {
                   freezeAutoScrollWhileTyping();
                   if (e.key === 'Enter' && !e.shiftKey && !(e.ctrlKey || e.metaKey)) {
@@ -715,21 +764,26 @@ export function ChatOverlayView() {
                 }}
               />
 
-              <div className="absolute right-2 bottom-2 flex items-center gap-2">
+              <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => fileInputRef.current?.click()}
-                  className="h-10 w-10 rounded-xl text-muted-foreground hover:text-foreground hover:bg-background/80"
-                  title="上传图片"
+                  className="h-9 w-9 rounded-xl text-muted-foreground/60 hover:text-primary hover:bg-primary/5 transition-all"
+                  title="Upload Image"
                 >
                   <ImageIcon className="w-5 h-5" />
                 </Button>
                 <Button
                   onClick={() => handleSend()}
                   disabled={!currentProviderId || isStreaming || (!input.trim() && pendingImages.length === 0)}
-                  className="h-10 w-10 rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20"
-                  title="发送 (Enter)\n换行 (Ctrl+Enter)"
+                  className={cn(
+                    "h-9 w-9 rounded-xl transition-all shadow-md",
+                    input.trim() || pendingImages.length > 0
+                      ? "bg-primary text-primary-foreground shadow-primary/20 hover:scale-105"
+                      : "bg-muted text-muted-foreground/40"
+                  )}
+                  title="Send (Enter)"
                 >
                   <Send className="w-4 h-4" />
                 </Button>
