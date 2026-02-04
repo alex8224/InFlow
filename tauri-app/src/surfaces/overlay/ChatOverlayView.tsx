@@ -10,12 +10,10 @@ import { listen } from "@tauri-apps/api/event";
 import {
   Bot,
   Check,
-  ChevronDown,
-  ChevronRight,
   Copy,
   Image as ImageIcon,
+  MessageSquare,
   Send,
-  Wrench,
   X,
 } from "lucide-react";
 
@@ -76,12 +74,13 @@ export function ChatOverlayView() {
   const activeAssistantMessageId = useRef<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputAreaRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
   const frozenScrollTopRef = useRef(0);
   const frozenOffsetFromBottomRef = useRef(0);
   const typingUnfreezeTimerRef = useRef<number | null>(null);
-  const [toolPanelOpen, setToolPanelOpen] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const [isInputVisible, setIsInputVisible] = useState(true);
 
   const lastPrefillInvocationIdRef = useRef<string | null>(null);
 
@@ -384,6 +383,23 @@ export function ChatOverlayView() {
     leakPendingRef.current = "";
   }, [sessionId]);
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        isInputVisible &&
+        inputAreaRef.current &&
+        !inputAreaRef.current.contains(event.target as Node)
+      ) {
+        setIsInputVisible(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isInputVisible]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSend = async (overrideText?: string) => {
@@ -420,6 +436,7 @@ export function ChatOverlayView() {
 
     setInput("");
     clearPendingImages();
+    setIsInputVisible(false);
     appendUserMessage(parts as any);
     const assistantId = startAssistantMessage();
     activeAssistantMessageId.current = assistantId;
@@ -569,12 +586,10 @@ export function ChatOverlayView() {
     return toolCallEntries.find((t) => t.status === "started");
   }, [toolCallEntries]);
 
-  const isAnyToolRunning = !!runningTool;
-
   const TypingIndicator = () => {
     return (
       <div className="flex items-center gap-2 text-[12px] text-muted-foreground select-none">
-        <div className="font-bold">正在生成</div>
+        <div className="font-bold">{runningTool ? runningTool.name : "正在生成"}</div>
         <div className="flex items-center gap-1">
           <span
             className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse"
@@ -589,11 +604,6 @@ export function ChatOverlayView() {
             style={{ animationDelay: "320ms" }}
           />
         </div>
-        {isAnyToolRunning && (
-          <div className="text-[10px] font-black uppercase tracking-widest opacity-70">
-            tools
-          </div>
-        )}
       </div>
     );
   };
@@ -721,7 +731,7 @@ export function ChatOverlayView() {
     isStreaming,
     copiedMsgId,
     copyMessageMarkdown,
-    isAnyToolRunning,
+    runningTool,
   ]);
 
   const suggestions = [
@@ -766,190 +776,116 @@ export function ChatOverlayView() {
           </div>
         </div>
 
-        {toolCallEntries.length > 0 && (
-          <div className="shrink-0 rounded-2xl border border-border/40 bg-muted/10 my-2 mx-4 overflow-hidden shadow-inner">
-            <button
-              type="button"
-              onClick={() => setToolPanelOpen((v) => !v)}
-              className="w-full flex items-center justify-between gap-2 px-4 py-2 hover:bg-muted/20 transition-colors"
+        <div className="shrink-0 flex flex-col gap-2 mx-4 mb-4 relative min-h-[56px] justify-end">
+          {/* Wake Button */}
+          <div className={cn(
+            "absolute right-0 bottom-0 transition-all duration-300 transform origin-bottom-right",
+            !isInputVisible ? "scale-100 opacity-100" : "scale-0 opacity-0 pointer-events-none"
+          )}>
+            <Button
+              onClick={() => {
+                setIsInputVisible(true);
+                setTimeout(() => inputRef.current?.focus(), 100);
+              }}
+              className="h-12 w-12 rounded-2xl shadow-xl bg-primary text-primary-foreground hover:scale-110 transition-transform flex items-center justify-center"
+              title="Show Input"
             >
-              <div className="flex items-center gap-2.5">
-                <div className="flex -space-x-1.5">
-                  <div className="w-5 h-5 rounded-full bg-primary/10 border border-background flex items-center justify-center">
-                    <Wrench className="w-2.5 h-2.5 text-primary" />
-                  </div>
-                  {isAnyToolRunning && (
-                    <div className="w-5 h-5 rounded-full bg-amber-500/10 border border-background flex items-center justify-center animate-pulse">
-                      <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                    </div>
-                  )}
-                </div>
-                <div className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground truncate">
-                  {runningTool ? (
-                    <span className="text-amber-600/90 animate-pulse">
-                      Calling {runningTool.name}...
-                    </span>
-                  ) : (
-                    `System Tool Pipeline (${toolCallEntries.length})`
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {isAnyToolRunning && (
-                  <span className="text-[9px] font-bold text-amber-600/80 animate-pulse">
-                    EXECUTING...
-                  </span>
-                )}
-                {toolPanelOpen ? (
-                  <ChevronDown className="w-4 h-4 text-muted-foreground/60" />
-                ) : (
-                  <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
-                )}
-              </div>
-            </button>
+              <MessageSquare className="w-6 h-6" />
+            </Button>
+          </div>
 
-            {toolPanelOpen && (
-              <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-200">
-                <div className="space-y-2 max-h-[200px] overflow-auto custom-scrollbar pr-1">
-                  {toolCallEntries.map((c) => (
-                    <div
-                      key={c.callId}
-                      className="rounded-xl border border-border/40 bg-background/40 p-3 font-mono text-[11px] group"
+          {/* Input Area */}
+          <div 
+            ref={inputAreaRef}
+            className={cn(
+              "flex flex-col gap-2 transition-all duration-300 transform origin-bottom-right",
+              isInputVisible ? "scale-100 opacity-100" : "scale-50 opacity-0 pointer-events-none absolute w-full"
+            )}
+          >
+            {pendingImages.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-1">
+                {pendingImages.map((img, idx) => (
+                  <div
+                    key={idx}
+                    className="relative group rounded-xl overflow-hidden border border-border shadow-sm bg-background"
+                  >
+                    <img
+                      src={img}
+                      alt="Pending"
+                      className="w-20 h-20 object-cover"
+                    />
+                    <button
+                      onClick={() => removePendingImage(idx)}
+                      className="absolute top-1 right-1 p-1 rounded-full bg-background/80 backdrop-blur-sm text-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground"
                     >
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground/40">$</span>
-                          <span className="font-bold text-primary/80 truncate">
-                            {c.name}
-                          </span>
-                        </div>
-                        <div
-                          className={cn(
-                            "text-[9px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded border",
-                            c.status === "started"
-                              ? "text-amber-600 bg-amber-500/5 border-amber-500/20"
-                              : c.status === "done"
-                                ? "text-green-600 bg-green-500/5 border-green-500/20"
-                                : "text-destructive bg-destructive/5 border-destructive/20",
-                          )}
-                        >
-                          {c.status}
-                        </div>
-                      </div>
-                      <div className="bg-muted/30 rounded-lg p-2 overflow-auto max-h-[100px] border border-border/10">
-                        <code className="text-muted-foreground leading-tight">
-                          {JSON.stringify(c.arguments ?? {}, null, 2)}
-                        </code>
-                      </div>
-                      {c.result !== undefined && (
-                        <div className="mt-2 bg-primary/5 rounded-lg p-2 overflow-auto max-h-[120px] border border-primary/10">
-                          <div className="text-[9px] font-bold text-primary/40 uppercase mb-1">
-                            Output
-                          </div>
-                          <code className="text-primary/70 leading-tight">
-                            {typeof c.result === "string"
-                              ? c.result
-                              : JSON.stringify(c.result, null, 2)}
-                          </code>
-                        </div>
-                      )}
-                      {c.error && (
-                        <div className="mt-2 text-[10px] font-bold text-destructive bg-destructive/5 p-2 rounded-lg border border-destructive/20">
-                          {c.error}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
-          </div>
-        )}
 
-        <div className="shrink-0 flex flex-col gap-2 mx-4">
-          {pendingImages.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-1">
-              {pendingImages.map((img, idx) => (
-                <div
-                  key={idx}
-                  className="relative group rounded-xl overflow-hidden border border-border shadow-sm bg-background"
-                >
-                  <img
-                    src={img}
-                    alt="Pending"
-                    className="w-20 h-20 object-cover"
-                  />
-                  <button
-                    onClick={() => removePendingImage(idx)}
-                    className="absolute top-1 right-1 p-1 rounded-full bg-background/80 backdrop-blur-sm text-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground"
+            <div className="rounded-2xl border border-border/60 bg-muted/10 p-2 shadow-sm transition-all focus-within:shadow-md focus-within:border-primary/20">
+              <div className="relative flex flex-col">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                />
+                <Textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => {
+                    freezeAutoScrollWhileTyping();
+                    setInput(e.target.value);
+                  }}
+                  onPaste={handlePaste}
+                  placeholder="Message inFlow..."
+                  className="min-h-[52px] max-h-[200px] resize-none bg-transparent border-none shadow-none focus-visible:ring-0 rounded-xl pl-4 pr-24 py-3 text-sm font-medium leading-relaxed select-text placeholder:text-muted-foreground/50"
+                  onKeyDown={(e) => {
+                    freezeAutoScrollWhileTyping();
+                    if (
+                      e.key === "Enter" &&
+                      !e.shiftKey &&
+                      !(e.ctrlKey || e.metaKey)
+                    ) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                />
+
+                <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="h-9 w-9 rounded-xl text-muted-foreground/60 hover:text-primary hover:bg-primary/5 transition-all"
+                    title="Upload Image"
                   >
-                    <X className="w-3 h-3" />
-                  </button>
+                    <ImageIcon className="w-5 h-5" />
+                  </Button>
+                  <Button
+                    onClick={() => handleSend()}
+                    disabled={
+                      !currentProviderId ||
+                      isStreaming ||
+                      (!input.trim() && pendingImages.length === 0)
+                    }
+                    className={cn(
+                      "h-9 w-9 rounded-xl transition-all shadow-md",
+                      input.trim() || pendingImages.length > 0
+                        ? "bg-primary text-primary-foreground shadow-primary/20 hover:scale-105"
+                        : "bg-muted text-muted-foreground/40",
+                    )}
+                    title="Send (Enter)"
+                  >
+                    <Send className="w-4 h-4" />
+                  </Button>
                 </div>
-              ))}
-            </div>
-          )}
-
-          <div className="rounded-2xl border border-border/60 bg-muted/10 p-2 shadow-sm transition-all focus-within:shadow-md focus-within:border-primary/20">
-            <div className="relative flex flex-col">
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileSelect}
-                accept="image/*"
-                multiple
-                className="hidden"
-              />
-              <Textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => {
-                  freezeAutoScrollWhileTyping();
-                  setInput(e.target.value);
-                }}
-                onPaste={handlePaste}
-                placeholder="Message inFlow..."
-                className="min-h-[52px] max-h-[200px] resize-none bg-transparent border-none shadow-none focus-visible:ring-0 rounded-xl pl-4 pr-24 py-3 text-sm font-medium leading-relaxed select-text placeholder:text-muted-foreground/50"
-                onKeyDown={(e) => {
-                  freezeAutoScrollWhileTyping();
-                  if (
-                    e.key === "Enter" &&
-                    !e.shiftKey &&
-                    !(e.ctrlKey || e.metaKey)
-                  ) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-              />
-
-              <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="h-9 w-9 rounded-xl text-muted-foreground/60 hover:text-primary hover:bg-primary/5 transition-all"
-                  title="Upload Image"
-                >
-                  <ImageIcon className="w-5 h-5" />
-                </Button>
-                <Button
-                  onClick={() => handleSend()}
-                  disabled={
-                    !currentProviderId ||
-                    isStreaming ||
-                    (!input.trim() && pendingImages.length === 0)
-                  }
-                  className={cn(
-                    "h-9 w-9 rounded-xl transition-all shadow-md",
-                    input.trim() || pendingImages.length > 0
-                      ? "bg-primary text-primary-foreground shadow-primary/20 hover:scale-105"
-                      : "bg-muted text-muted-foreground/40",
-                  )}
-                  title="Send (Enter)"
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
               </div>
             </div>
           </div>
