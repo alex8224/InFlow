@@ -235,6 +235,14 @@ fn build(provider: &LlmProvider) -> Tool {
                 "type": "integer",
                 "description": "Maximum number of characters to return (default 20000, max 200000).",
                 "default": 20000
+            },
+            "rangeStart": {
+                "type": "integer",
+                "description": "Optional starting byte position for range request (0-indexed). Use with rangeEnd to fetch a specific byte range."
+            },
+            "rangeEnd": {
+                "type": "integer",
+                "description": "Optional ending byte position for range request (inclusive). If only rangeEnd is specified without rangeStart, fetches the last rangeEnd bytes."
             }
         },
         "required": ["url"]
@@ -288,6 +296,23 @@ fn exec<'a>(
             .min(MAX_MAX_CHARS)
             .max(MIN_MAX_CHARS);
 
+        // Parse optional range parameters
+        let range_start = args.get("rangeStart").and_then(|v| v.as_u64());
+        let range_end = args.get("rangeEnd").and_then(|v| v.as_u64());
+
+        // Build Range header value if range parameters are provided
+        let range_header: Option<String> = match (range_start, range_end) {
+            (Some(start), Some(end)) => {
+                if start > end {
+                    return Err("rangeStart must be less than or equal to rangeEnd".to_string());
+                }
+                Some(format!("bytes={}-{}", start, end))
+            }
+            (Some(start), None) => Some(format!("bytes={}-", start)),
+            (None, Some(end)) => Some(format!("bytes=-{}", end)),
+            (None, None) => None,
+        };
+
         let proxy_url = resolve_proxy_for_url(config, &target_url);
         let client = if proxy_url.is_some() {
             build_webfetch_client(proxy_url.as_deref())?
@@ -295,7 +320,15 @@ fn exec<'a>(
             // Keep a shared client for the common no-proxy case.
             webfetch_http_client().clone()
         };
-        let headers = build_headers(fmt);
+        let mut headers = build_headers(fmt);
+
+        // Add Range header if specified
+        if let Some(ref range_val) = range_header {
+            headers.insert(
+                reqwest::header::RANGE,
+                header_value(range_val),
+            );
+        }
 
         let resp = client
             .get(&url)
