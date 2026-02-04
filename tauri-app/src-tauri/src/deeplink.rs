@@ -18,6 +18,7 @@ pub fn handle_deep_link(app: &AppHandle, url: String) {
             let mut instance_id = None;
             let mut reuse = None;
             let mut focus = Some(true);
+            let mut auto_send = None;
 
             for (key, value) in parsed_url.query_pairs() {
                 match key.as_ref() {
@@ -27,6 +28,7 @@ pub fn handle_deep_link(app: &AppHandle, url: String) {
                     "instanceId" => instance_id = Some(value.to_string()),
                     "reuse" => reuse = Some(value.to_string()),
                     "focus" => focus = Some(value.parse().unwrap_or(true)),
+                    "autoSend" => auto_send = Some(value.parse().unwrap_or(false)),
                     _ => {
                         args.insert(
                             key.to_string(),
@@ -92,6 +94,7 @@ pub fn handle_deep_link(app: &AppHandle, url: String) {
                     position: None,
                     auto_close: None,
                     target_label: Some(label.clone()),
+                    auto_send,
                 }),
                 created_at: chrono::Utc::now().timestamp(),
             };

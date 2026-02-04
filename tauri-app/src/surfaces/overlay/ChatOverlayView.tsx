@@ -422,6 +422,14 @@ export function ChatOverlayView() {
       if (text && text.trim()) {
         setInput(text);
         queueMicrotask(() => inputRef.current?.focus());
+
+        // Auto-send if requested via deeplink
+        if (currentInvocation.ui?.autoSend) {
+          // Use setTimeout to ensure input state is updated before sending
+          setTimeout(() => {
+            handleSend(text);
+          }, 100);
+        }
       }
 
       lastPrefillInvocationIdRef.current = currentInvocation.id;

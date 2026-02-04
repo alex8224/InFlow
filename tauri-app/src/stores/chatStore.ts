@@ -72,7 +72,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   isStreaming: false,
   messages: [],
   toolCalls: {},
-  selectedTools: [],
+  selectedTools: ['inflow__get_current_datetime', 'inflow__webfetch'],
   input: '',
   pendingImages: [],
 

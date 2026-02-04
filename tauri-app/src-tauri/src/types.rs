@@ -38,6 +38,7 @@ pub struct InvocationUi {
     pub position: Option<String>,
     pub auto_close: Option<bool>,
     pub target_label: Option<String>,
+    pub auto_send: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

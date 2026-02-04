@@ -16,6 +16,6 @@ export type Invocation = {
   args?: Record<string, unknown>;
   context?: InvocationContext;
   source: "context_menu" | "powertoys" | "hotkey" | "protocol" | "api" | "internal";
-  ui?: { mode?: UiMode; focus?: boolean; position?: "cursor" | "center" | "last"; autoClose?: boolean };
+  ui?: { mode?: UiMode; focus?: boolean; position?: "cursor" | "center" | "last"; autoClose?: boolean; autoSend?: boolean };
   createdAt: number;
 };
