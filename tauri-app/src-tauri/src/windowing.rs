@@ -25,6 +25,7 @@ pub fn resolve_target_window(
             "overlay" => "overlay".to_string(),
             "pet" => "pet".to_string(),
             "main" => "main".to_string(),
+            "action-predict" => "action-predict".to_string(),
             _ => return Err(format!("Unknown mode: {}", mode)),
         }
     };
@@ -97,6 +98,17 @@ pub fn ensure_window(
                 .skip_taskbar(true)
                 .visible(false);
         }
+        "action-predict" => {
+            builder = builder
+                .title(window_type)
+                .inner_size(520.0, 144.0)
+                .decorations(false)
+                .transparent(true)
+                .shadow(false)
+                .skip_taskbar(true)
+                .resizable(false)
+                .visible(false);
+        }
         "pet" => {
             builder = builder
                 .title("Pet")
@@ -134,6 +146,21 @@ pub fn show_window_by_label(app: &AppHandle, label: &str, focus: bool) -> Result
         if win.is_minimized().unwrap_or(false) {
             let _ = win.unminimize();
         }
+
+        // Center action-predict window on screen
+        if label.starts_with("action-predict") {
+            if let Ok(Some(monitor)) = win.current_monitor() {
+                let screen_size = monitor.size();
+                let screen_pos = monitor.position();
+                if let Ok(win_size) = win.outer_size() {
+                    let x = screen_pos.x + (screen_size.width as i32 - win_size.width as i32) / 2;
+                    let y = screen_pos.y + (screen_size.height as i32 - win_size.height as i32) / 3; // 1/3 from top
+                    let _ = win
+                        .set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }));
+                }
+            }
+        }
+
         let _ = win.show();
         if focus {
             let _ = win.set_focus();

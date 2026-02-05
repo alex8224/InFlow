@@ -1,3 +1,4 @@
+pub mod action_predict;
 pub mod app;
 pub mod capability;
 pub mod chat;

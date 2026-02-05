@@ -169,3 +169,17 @@ export async function chatShareCreate(
 export async function getShareServerPort(): Promise<number | null> {
   return await invoke('get_share_server_port');
 }
+
+export async function handleDeepLinkFromFrontend(url: string): Promise<void> {
+  await invoke('handle_deep_link_from_frontend', { url });
+}
+
+// Action Predict API
+export interface PredictedAction {
+  label: string;
+  prompt: string;
+}
+
+export async function predictActions(text: string): Promise<PredictedAction[]> {
+  return await invoke('predict_actions', { text });
+}

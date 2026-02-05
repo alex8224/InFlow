@@ -155,8 +155,10 @@ pub fn run() {
             misc::open_workspace,
             misc::get_clipboard_text,
             misc::get_clipboard_image,
+            misc::handle_deep_link_from_frontend,
             share::chat_share_create,
             share::get_share_server_port,
+            action_predict::predict_actions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

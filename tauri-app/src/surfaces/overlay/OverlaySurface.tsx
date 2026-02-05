@@ -357,6 +357,7 @@ export function OverlaySurface() {
   const capabilityId = currentInvocation?.capabilityId;
   const isChat = capabilityId === "chat.overlay";
   const isTranslate = capabilityId?.startsWith("translate.") ?? false;
+  const isActionPredict = capabilityId === "action.predict";
 
   useEffect(() => {
     if (!isChat) return;
@@ -513,7 +514,10 @@ export function OverlaySurface() {
           onMouseDown={handleDrag}
           onDoubleClick={handleHeaderDoubleClick}
           data-tauri-drag-region
-          className="flex items-center px-3 h-11 bg-muted/20 border-b border-border/30 select-none cursor-grab active:cursor-grabbing shrink-0 relative gap-2"
+          className={cn(
+            "flex items-center px-3 h-11 bg-muted/20 border-b border-border/30 select-none cursor-grab active:cursor-grabbing shrink-0 relative gap-2",
+            isActionPredict && "hidden"
+          )}
         >
           <div className="flex items-center gap-2 text-left shrink-0">
             <button
@@ -855,7 +859,7 @@ export function OverlaySurface() {
 
         <footer className={cn(
           "px-6 h-10 bg-muted/30 border-t border-border/40 flex justify-between items-center shrink-0 select-none",
-          isChat && "hidden"
+          (isChat || isActionPredict) && "hidden"
         )}>
           <div className="flex items-center gap-2.5">
             <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_12px_rgba(34,197,94,0.8)] animate-pulse" />

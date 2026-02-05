@@ -39,10 +39,10 @@ function App() {
     return <PetSurface />;
   }
 
-  // Reuse OverlaySurface for translate and chat windows
+  // Reuse OverlaySurface for translate, chat, and action-predict windows
   // OverlaySurface logic decides content based on capabilityId which is already correct 
   // because we filter invocations by window label in bootstrap.
-  if (windowLabel.startsWith('translate') || windowLabel.startsWith('chat') || windowLabel === 'overlay') {
+  if (windowLabel.startsWith('translate') || windowLabel.startsWith('chat') || windowLabel.startsWith('overlay') || windowLabel.startsWith('action-predict')) {
     return <OverlaySurface />;
   }
 

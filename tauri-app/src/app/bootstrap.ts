@@ -6,6 +6,7 @@ import { useInvocationStore } from '../stores/invocationStore';
 import { viewRegistry } from '../core/registry/viewRegistry';
 import { TranslateView } from '../surfaces/overlay/TranslateView';
 import { ChatOverlayView } from '../surfaces/overlay/ChatOverlayView';
+import { ActionPredictView } from '../surfaces/overlay/ActionPredictView';
 import { SettingsView } from '../surfaces/workspace/SettingsView';
 
 export async function setupEventListeners() {
@@ -69,6 +70,15 @@ export async function bootstrap() {
       name: 'Chat',
       component: ChatOverlayView,
       capabilityIds: ['chat.overlay'],
+    });
+  }
+
+  if (!viewRegistry.has('action-predict-view')) {
+    viewRegistry.register({
+      id: 'action-predict-view',
+      name: 'Action Predict',
+      component: ActionPredictView,
+      capabilityIds: ['action.predict'],
     });
   }
 

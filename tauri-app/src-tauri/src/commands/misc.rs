@@ -3,6 +3,16 @@ use base64::{engine::general_purpose, Engine as _};
 use tauri::Manager;
 
 #[tauri::command]
+pub async fn handle_deep_link_from_frontend(url: String, app: tauri::AppHandle) -> Result<(), String> {
+    println!("[command] handle_deep_link_from_frontend: {}", url);
+    // 使用 spawn 避免阻塞当前命令线程，确保命令能立即返回
+    tauri::async_runtime::spawn(async move {
+        crate::deeplink::handle_deep_link(&app, url);
+    });
+    Ok(())
+}
+
+#[tauri::command]
 pub fn show_overlay(app: tauri::AppHandle) -> Result<(), String> {
     // Backward compatibility or legacy overlay
     if let Some(overlay) = app.get_webview_window("overlay") {

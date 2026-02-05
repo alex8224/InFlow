@@ -109,16 +109,18 @@ pub fn handle_deep_link(app: &AppHandle, url: String) {
 
             let focus_val = focus.unwrap_or(true);
 
-            // Execute window operations synchronously on the main thread
-            // Removing spawn to avoid potential thread-safety issues with window creation
+            // Execute window operations
             match ensure_window(app, &label, &window_type) {
-                Ok(_) => println!("[deep_link] ensure_window success: {}", label),
-                Err(e) => println!("[deep_link] ensure_window failed: {}", e),
+                Ok(_) => {
+                    println!("[deep_link] ensure_window success: {}", label);
+                    match show_window_by_label(app, &label, focus_val) {
+                        Ok(_) => println!("[deep_link] show_window success: {}", label),
+                        Err(e) => println!("[deep_link] show_window failed: {}: {}", label, e),
+                    }
+                }
+                Err(e) => println!("[deep_link] ensure_window failed: {}: {}", label, e),
             }
-            match show_window_by_label(app, &label, focus_val) {
-                Ok(_) => println!("[deep_link] show_window success: {}", label),
-                Err(e) => println!("[deep_link] show_window failed: {}", e),
-            }
+            println!("[deep_link] Done processing: {}", url);
         }
     }
 }

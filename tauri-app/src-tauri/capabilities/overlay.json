@@ -2,13 +2,14 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "overlay",
   "description": "Capability for the overlay window",
-  "windows": ["overlay", "overlay-default", "chat-default", "translate-default"],
+  "windows": ["overlay", "overlay-default", "chat-default", "translate-default", "action-predict-default"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
     "core:window:allow-set-focus",
     "core:window:allow-set-always-on-top",
     "core:event:allow-listen",
-    "core:event:allow-emit"
+    "core:event:allow-emit",
+    "opener:default"
   ]
 }
