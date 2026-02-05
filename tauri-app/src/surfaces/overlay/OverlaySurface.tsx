@@ -8,6 +8,7 @@ import {
   Plus,
   Trash2,
   Square,
+  Minus,
   Pin,
   PinOff,
   Wrench,
@@ -251,6 +252,16 @@ export function OverlaySurface() {
     e.preventDefault();
     e.stopPropagation();
     await getCurrentWindow().hide();
+  };
+
+  const handleMinimize = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await getCurrentWindow().minimize();
+    } catch (err) {
+      console.error("Failed to minimize window:", err);
+    }
   };
 
   const handlePin = async () => {
@@ -841,6 +852,15 @@ export function OverlaySurface() {
             )}
 
             <div className="w-px h-4 bg-border/40 mx-0.5" />
+
+            <button
+              onClick={handleMinimize}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-all active:scale-90 border border-transparent hover:border-border/40"
+              title="Minimize"
+            >
+              <Minus className="w-4 h-4" />
+            </button>
 
             <button
               onClick={handleClose}

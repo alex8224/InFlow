@@ -95,7 +95,7 @@ pub fn ensure_window(
                 .decorations(false)
                 .transparent(true)
                 .shadow(false)
-                .skip_taskbar(true)
+                .skip_taskbar(false)
                 .visible(false);
         }
         "action-predict" => {
@@ -127,7 +127,7 @@ pub fn ensure_window(
                 .decorations(false)
                 .transparent(true)
                 .shadow(false)
-                .skip_taskbar(true)
+                .skip_taskbar(false)
                 .visible(false);
         }
         "main" => {

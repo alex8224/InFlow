@@ -200,11 +200,11 @@ fn generate_share_html(session: &SharedSession) -> String {
                 </div>
             </div>
         </header>
-        
+
         <!-- Messages -->
         <div id="messages" class="space-y-6">
         </div>
-        
+
         <!-- Footer -->
         <footer class="mt-12 pt-6 border-t border-[hsl(var(--border))] text-center">
             <p class="text-sm text-[hsl(var(--muted-foreground))]">
@@ -212,26 +212,26 @@ fn generate_share_html(session: &SharedSession) -> String {
             </p>
         </footer>
     </div>
-    
+
     <script>
         const messages = {messages_json};
-        
+
         // Initialize mermaid
         mermaid.initialize({{ startOnLoad: false, theme: 'default', securityLevel: 'strict' }});
-        
+
         // ============================================================
         // Math preprocessing - matches RichMarkdown.tsx logic exactly
         // ============================================================
-        
+
         // Split markdown by fenced code blocks to avoid processing math inside code
         function splitByFencedCodeBlocks(markdown) {{
             const out = [];
             const s = markdown;
             const n = s.length;
             let i = 0;
-            
+
             const isLineStart = (idx) => idx === 0 || s[idx - 1] === '\\n';
-            
+
             const findFenceStart = (from) => {{
                 let j = from;
                 while (j < n) {{
@@ -242,7 +242,7 @@ fn generate_share_html(session: &SharedSession) -> String {
                 }}
                 return -1;
             }};
-            
+
             const findFenceEnd = (from) => {{
                 let j = from;
                 while (j < n) {{
@@ -256,22 +256,22 @@ fn generate_share_html(session: &SharedSession) -> String {
                 }}
                 return -1;
             }};
-            
+
             while (i < n) {{
                 const start = findFenceStart(i);
                 if (start === -1) {{
                     out.push({{ kind: 'text', value: s.slice(i) }});
                     break;
                 }}
-                
+
                 if (start > i) out.push({{ kind: 'text', value: s.slice(i, start) }});
-                
+
                 const afterStartLine = s.indexOf('\\n', start);
                 if (afterStartLine === -1) {{
                     out.push({{ kind: 'fence', value: s.slice(start) }});
                     break;
                 }}
-                
+
                 const end = findFenceEnd(afterStartLine + 1);
                 if (end === -1) {{
                     out.push({{ kind: 'fence', value: s.slice(start) }});
@@ -280,22 +280,22 @@ fn generate_share_html(session: &SharedSession) -> String {
                 out.push({{ kind: 'fence', value: s.slice(start, end) }});
                 i = end;
             }}
-            
+
             return out;
         }}
-        
+
         // Transform math notation in plain text segments
         function transformMathInPlainTextSegment(text) {{
             // We don't transform here anymore - just return as-is
             // Math will be protected before marked.js and restored after
             return text;
         }}
-        
+
         // Protect math from marked.js by replacing with placeholders
         function protectMath(text) {{
             const blocks = [];
             let idx = 0;
-            
+
             // Protect block math $$...$$ (multiline)
             text = text.replace(/\$\$([^]*?)\$\$/g, (match) => {{
                 const placeholder = '%%MATHBLOCK' + idx + '%%';
@@ -303,7 +303,7 @@ fn generate_share_html(session: &SharedSession) -> String {
                 idx++;
                 return placeholder;
             }});
-            
+
             // Protect \[...\] block math
             text = text.replace(/\\\[([^]*?)\\\]/g, (match) => {{
                 const placeholder = '%%MATHBLOCK' + idx + '%%';
@@ -313,7 +313,7 @@ fn generate_share_html(session: &SharedSession) -> String {
                 idx++;
                 return placeholder;
             }});
-            
+
             // Protect inline math $...$ (single line, not $$)
             text = text.replace(/\$([^\$\n]+?)\$/g, (match) => {{
                 const placeholder = '%%MATHINLINE' + idx + '%%';
@@ -321,7 +321,7 @@ fn generate_share_html(session: &SharedSession) -> String {
                 idx++;
                 return placeholder;
             }});
-            
+
             // Protect \(...\) inline math
             text = text.replace(/\\\(([^]*?)\\\)/g, (match) => {{
                 const placeholder = '%%MATHINLINE' + idx + '%%';
@@ -331,10 +331,10 @@ fn generate_share_html(session: &SharedSession) -> String {
                 idx++;
                 return placeholder;
             }});
-            
+
             return {{ text, blocks }};
         }}
-        
+
         // Restore math after marked.js processing
         function restoreMath(html, blocks) {{
             for (const b of blocks) {{
@@ -343,30 +343,30 @@ fn generate_share_html(session: &SharedSession) -> String {
             }}
             return html;
         }}
-        
+
         // Normalize math markdown - matches RichMarkdown.tsx normalizeMathMarkdown
         function normalizeMathMarkdown(markdown) {{
             const parts = splitByFencedCodeBlocks(markdown);
             let out = '';
-            
+
             for (const part of parts) {{
                 if (part.kind === 'fence') {{
                     out += part.value;
                     continue;
                 }}
-                
+
                 const s = part.value;
                 let i = 0;
                 let inInline = false;
                 let delim = '';
                 let buf = '';
-                
+
                 const flush = () => {{
                     if (!buf) return;
                     out += transformMathInPlainTextSegment(buf);
                     buf = '';
                 }};
-                
+
                 while (i < s.length) {{
                     const ch = s[i];
                     if (!inInline) {{
@@ -384,7 +384,7 @@ fn generate_share_html(session: &SharedSession) -> String {
                         i++;
                         continue;
                     }}
-                    
+
                     // In inline code: emit raw until closing backticks
                     if (delim && s.startsWith(delim, i)) {{
                         out += s.slice(i, i + delim.length);
@@ -396,57 +396,57 @@ fn generate_share_html(session: &SharedSession) -> String {
                     out += ch;
                     i++;
                 }}
-                
+
                 flush();
             }}
-            
+
             return out;
         }}
-        
+
         // ============================================================
         // Code block rendering
         // ============================================================
-        
+
         const renderer = new marked.Renderer();
         renderer.code = function(codeObj) {{
             // Handle both old and new marked.js API
             const code = typeof codeObj === 'string' ? codeObj : (codeObj.text || codeObj.raw || '');
             const lang = (typeof codeObj === 'object' ? codeObj.lang : arguments[1]) || 'plaintext';
-            
+
             // Handle mermaid diagrams
             if (lang.toLowerCase() === 'mermaid') {{
                 const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
                 return '<div class="mermaid" id="' + id + '">' + escapeHtml(code) + '</div>';
             }}
-            
+
             // Handle SVG - render directly
             const trimmedCode = code.trim();
-            const looksLikeSvg = trimmedCode.startsWith('<svg') || 
+            const looksLikeSvg = trimmedCode.startsWith('<svg') ||
                 (trimmedCode.startsWith('<?xml') && trimmedCode.includes('<svg'));
-            
+
             if (lang.toLowerCase() === 'svg' || (lang.toLowerCase() === 'xml' && looksLikeSvg)) {{
                 return '<div class="svg-container my-4 p-3 rounded-xl border flex justify-center overflow-auto">' + code + '</div>';
             }}
-            
+
             // Handle HTML blocks that might contain SVG
             if (lang.toLowerCase() === 'html' && code.includes('<svg')) {{
                 return '<div class="html-container my-4">' + code + '</div>';
             }}
-            
+
             // Regular code with syntax highlighting
             let highlighted;
             try {{
-                highlighted = hljs.getLanguage(lang) 
-                    ? hljs.highlight(code, {{ language: lang }}).value 
+                highlighted = hljs.getLanguage(lang)
+                    ? hljs.highlight(code, {{ language: lang }}).value
                     : hljs.highlightAuto(code).value;
             }} catch (e) {{
                 highlighted = escapeHtml(code);
             }}
-            
-            const normalizedLang = lang.toLowerCase() === 'py' ? 'python' : 
+
+            const normalizedLang = lang.toLowerCase() === 'py' ? 'python' :
                                    lang.toLowerCase() === 'js' ? 'javascript' :
                                    lang.toLowerCase() === 'ts' ? 'typescript' : lang;
-            
+
             return '<div class="code-fence group relative rounded-xl border overflow-hidden my-2">' +
                 '<div class="flex items-center justify-between px-3 py-1.5 border-b bg-[hsl(var(--muted))]">' +
                     '<div class="text-[9px] font-black uppercase tracking-[0.28em]">' + normalizedLang + '</div>' +
@@ -457,13 +457,13 @@ fn generate_share_html(session: &SharedSession) -> String {
                 '</pre>' +
             '</div>';
         }};
-        
-        marked.setOptions({{ 
+
+        marked.setOptions({{
             renderer,
             breaks: true,
             gfm: true
         }});
-        
+
         function copyCode(btn) {{
             const pre = btn.closest('.code-fence').querySelector('pre code');
             const code = pre ? pre.textContent : '';
@@ -472,20 +472,20 @@ fn generate_share_html(session: &SharedSession) -> String {
                 setTimeout(() => btn.textContent = 'Copy', 900);
             }});
         }}
-        
+
         function escapeHtml(text) {{
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }}
-        
+
         async function renderMessages() {{
             const container = document.getElementById('messages');
-            
+
             for (const msg of messages) {{
                 const div = document.createElement('div');
                 div.className = 'flex w-full ' + (msg.role === 'user' ? 'justify-end' : 'justify-start');
-                
+
                 const inner = document.createElement('div');
                 if (msg.role === 'user') {{
                     inner.className = 'message-user max-w-[85%] rounded-2xl px-4 py-3 shadow-sm';
@@ -497,18 +497,18 @@ fn generate_share_html(session: &SharedSession) -> String {
                     const parsedHtml = marked.parse(protectedText);
                     inner.innerHTML = restoreMath(parsedHtml, blocks);
                 }}
-                
+
                 div.appendChild(inner);
                 container.appendChild(div);
             }}
-            
+
             // Render mermaid diagrams
             try {{
                 await mermaid.run({{ querySelector: '.mermaid' }});
             }} catch (e) {{
                 console.warn('Mermaid rendering error:', e);
             }}
-            
+
             // Render math with KaTeX
             if (typeof renderMathInElement !== 'undefined') {{
                 renderMathInElement(document.body, {{
@@ -521,7 +521,7 @@ fn generate_share_html(session: &SharedSession) -> String {
                 }});
             }}
         }}
-        
+
         renderMessages();
     </script>
 </body>
@@ -617,7 +617,7 @@ pub fn start_server() -> Result<u16, std::io::Error> {
     let ports_to_try = [8765u16, 8766, 8767, 8768, 8769, 18765, 28765];
 
     for port in ports_to_try {
-        let bind_addr = format!("127.0.0.1:{}", port);
+        let bind_addr = format!("0.0.0.0:{}", port);
 
         match Server::http(&bind_addr) {
             Ok(server) => {
