@@ -6,6 +6,7 @@ export type ChatToolCallStatus = 'started' | 'done' | 'error';
 
 export type ChatMessagePart =
   | { type: 'markdown'; content: string }
+  | { type: 'thought'; content: string }
   | { type: 'image'; content: string }
   | { type: 'toolCall'; callId: string }
   | { type: 'toolResult'; callId: string }
@@ -53,7 +54,7 @@ type ChatStore = {
 
   appendUserMessage: (parts: ChatMessagePart[]) => string;
   startAssistantMessage: () => string;
-  appendAssistantToken: (messageId: string, delta: string) => void;
+  appendAssistantToken: (messageId: string, delta?: string, reasoningDelta?: string) => void;
   setStreaming: (value: boolean) => void;
 
   upsertToolCall: (call: { callId: string; name: string; arguments: unknown; status: ChatToolCallStatus }) => void;
@@ -145,14 +146,37 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     return id;
   },
 
-  appendAssistantToken: (messageId, delta) => {
+  appendAssistantToken: (messageId, delta, reasoningDelta) => {
     set({
       messages: get().messages.map((m) => {
         if (m.id !== messageId) return m;
-        const parts = m.parts.map((p) => {
-          if (p.type !== 'markdown') return p;
-          return { ...p, content: p.content + delta };
-        });
+        let parts = [...m.parts];
+
+        if (reasoningDelta) {
+          const thoughtIdx = parts.findIndex((p) => p.type === 'thought');
+          if (thoughtIdx > -1) {
+            const p = parts[thoughtIdx];
+            if (p.type === 'thought') {
+              parts[thoughtIdx] = { ...p, content: p.content + reasoningDelta };
+            }
+          } else {
+            // Insert thought at the beginning or before markdown
+            parts.unshift({ type: 'thought', content: reasoningDelta });
+          }
+        }
+
+        if (delta) {
+          const markdownIdx = parts.findIndex((p) => p.type === 'markdown');
+          if (markdownIdx > -1) {
+            const p = parts[markdownIdx];
+            if (p.type === 'markdown') {
+              parts[markdownIdx] = { ...p, content: p.content + delta };
+            }
+          } else {
+            parts.push({ type: 'markdown', content: delta });
+          }
+        }
+
         return { ...m, parts };
       }),
     });

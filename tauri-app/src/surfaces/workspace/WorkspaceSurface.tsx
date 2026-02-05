@@ -59,7 +59,7 @@ export function WorkspaceSurface() {
               <div className="bg-card rounded-lg shadow-sm border p-6">
                 <h2 className="text-xl font-semibold mb-4">AI 翻译能力</h2>
                 <div className="space-y-3 text-sm text-muted-foreground">
-                  <p>• 支持 OpenAI 兼容协议 (DeepSeek/GPT)</p>
+                  <p>• 支持 OpenAI / Gemini / Anthropic 协议</p>
                   <p>• 流式 Token 实时渲染</p>
                   <p>• Markdown 格式完美还原</p>
                   <p>• 自动感知系统深浅模式</p>

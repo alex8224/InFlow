@@ -30,7 +30,11 @@ import { useChatStore } from "../../stores/chatStore";
 import { useInvocationStore } from "../../stores/invocationStore";
 import { RichMarkdown } from "../../components/blocks/RichMarkdown";
 
-type ChatTokenEvent = { sessionId: string; delta: string };
+type ChatTokenEvent = {
+  sessionId: string;
+  delta?: string;
+  reasoningDelta?: string;
+};
 type ChatEndEvent = { sessionId: string };
 type ChatErrorEvent = { sessionId: string; message: string };
 type ChatToolCallEvent = {
@@ -244,8 +248,12 @@ export function ChatOverlayView() {
         return out;
       };
 
-      const safeDelta = filterLeak(event.payload.delta);
-      if (safeDelta) appendAssistantToken(msgId, safeDelta);
+      const safeDelta = event.payload.delta ? filterLeak(event.payload.delta) : undefined;
+      const reasoningDelta = event.payload.reasoningDelta;
+
+      if (safeDelta || reasoningDelta) {
+        appendAssistantToken(msgId, safeDelta, reasoningDelta);
+      }
 
       if (debugStreamRef.current && safeDelta) {
         const run = debugRunRef.current;
@@ -760,7 +768,7 @@ export function ChatOverlayView() {
                 ))}
               </div>
             ) : (
-              <div className="relative rounded-[1.6rem] border border-border/60 bg-background/75 backdrop-blur-sm px-4 py-3 shadow-sm">
+              <div className="flex-1 min-w-0 relative rounded-[1.6rem] border border-border/60 bg-background/75 backdrop-blur-sm px-4 py-3 shadow-sm overflow-hidden">
                 {(() => {
                   const raw =
                     m.parts.find((p) => p.type === "markdown")?.type ===
@@ -768,8 +776,14 @@ export function ChatOverlayView() {
                       ? (m.parts.find((p) => p.type === "markdown") as any)
                           .content
                       : "";
+                  const thought = 
+                    m.parts.find((p) => p.type === "thought")?.type === "thought"
+                      ? (m.parts.find((p) => p.type === "thought") as any).content
+                      : "";
+
                   const isActive = activeAssistantMessageId.current === m.id;
-                  const showTyping = isStreaming && isActive && raw.trim() === "";
+                  // 只有当正文和思考内容都为空时，才显示“正在生成”
+                  const showTyping = isStreaming && isActive && raw.trim() === "" && thought.trim() === "";
                   return (
                     <>
                       <FloatingCopyButton
@@ -783,10 +797,35 @@ export function ChatOverlayView() {
                           <TypingIndicator />
                         </div>
                       ) : (
-                        <RichMarkdown
-                          className="leading-relaxed selection:bg-primary/20 select-text"
-                          markdown={raw}
-                        />
+                        <div className="flex flex-col gap-3 w-full max-w-full overflow-hidden">
+                          {m.parts.map((p, i) => {
+                            if (p.type === 'thought') {
+                              return (
+                                <details key={i} className="group/thought w-full max-w-full overflow-hidden" open>
+                                  <summary className="text-[11px] font-bold text-muted-foreground/60 cursor-pointer list-none flex items-center gap-1.5 hover:text-muted-foreground transition-colors select-none [&::-webkit-details-marker]:hidden">
+                                    <MessageSquare className="w-3 h-3" />
+                                    <span>思考过程</span>
+                                    <div className="h-px flex-1 bg-border/30" />
+                                  </summary>
+                                  <div className="mt-2 text-[12px] text-muted-foreground/80 leading-relaxed pl-4 border-l-2 border-muted/30 italic whitespace-pre-wrap break-all overflow-x-auto selection:bg-primary/10">
+                                    {p.content}
+                                  </div>
+                                </details>
+                              );
+                            }
+                            if (p.type === 'markdown') {
+                              return (
+                                <div key={i} className="w-full max-w-full overflow-hidden">
+                                  <RichMarkdown
+                                    className="leading-relaxed selection:bg-primary/20 select-text"
+                                    markdown={p.content}
+                                  />
+                                </div>
+                              );
+                            }
+                            return null;
+                          })}
+                        </div>
                       )}
                     </>
                   );

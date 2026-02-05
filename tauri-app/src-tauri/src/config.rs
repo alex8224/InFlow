@@ -11,6 +11,7 @@ pub struct LlmProvider {
     pub base_url: Option<String>,
     pub api_key: String,
     pub model_id: String,
+    pub reasoning_effort: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,6 +167,7 @@ impl AppConfig {
                 base_url: Some("https://api.deepseek.com/v1".to_string()),
                 api_key: "".to_string(),
                 model_id: "deepseek-chat".to_string(),
+                reasoning_effort: None,
             },
             LlmProvider {
                 id: "siliconflow".to_string(),
@@ -174,6 +176,16 @@ impl AppConfig {
                 base_url: Some("https://api.siliconflow.cn/v1".to_string()),
                 api_key: "".to_string(),
                 model_id: "deepseek-ai/DeepSeek-V3".to_string(),
+                reasoning_effort: None,
+            },
+            LlmProvider {
+                id: "anthropic".to_string(),
+                name: "Anthropic".to_string(),
+                kind: "Anthropic".to_string(),
+                base_url: Some("https://api.anthropic.com/v1".to_string()),
+                api_key: "".to_string(),
+                model_id: "claude-3-5-sonnet-20241022".to_string(),
+                reasoning_effort: None,
             },
             LlmProvider {
                 id: "gemini".to_string(),
@@ -182,6 +194,7 @@ impl AppConfig {
                 base_url: Some("https://generativelanguage.googleapis.com".to_string()),
                 api_key: "".to_string(),
                 model_id: "gemini-2.0-flash".to_string(),
+                reasoning_effort: None,
             },
             LlmProvider {
                 id: "openai".to_string(),
@@ -190,6 +203,7 @@ impl AppConfig {
                 base_url: Some("https://api.openai.com/v1".to_string()),
                 api_key: "".to_string(),
                 model_id: "gpt-4o-mini".to_string(),
+                reasoning_effort: None,
             },
         ]
     }

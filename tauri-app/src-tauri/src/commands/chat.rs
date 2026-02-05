@@ -7,8 +7,10 @@ use crate::types::{
 };
 use futures::StreamExt;
 use genai::chat::{
-    ChatMessage, ChatOptions, ChatRequest, ChatStreamEvent, Tool, ToolCall, ToolResponse,
+    ChatMessage, ChatOptions, ChatRequest, ChatStreamEvent, ReasoningEffort, Tool, ToolCall,
+    ToolResponse,
 };
+use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -327,9 +329,17 @@ pub async fn chat_stream(
             req = req.with_tools(genai_tools.clone());
         }
 
-        let opts = ChatOptions::default()
+        let mut opts = ChatOptions::default()
             .with_capture_tool_calls(true)
-            .with_capture_content(true);
+            .with_capture_content(true)
+            .with_normalize_reasoning_content(true);
+
+        if let Some(effort_str) = provider.reasoning_effort.as_ref() {
+            if let Ok(effort) = ReasoningEffort::from_str(effort_str) {
+                opts = opts.with_reasoning_effort(effort);
+            }
+        }
+
         let stream_res = client
             .exec_chat_stream(&model, req, Some(&opts))
             .await
@@ -380,7 +390,18 @@ pub async fn chat_stream(
                                 "chat-token",
                                 ChatTokenEvent {
                                     session_id: session_id.clone(),
-                                    delta: chunk.content,
+                                    delta: Some(chunk.content),
+                                    reasoning_delta: None,
+                                },
+                            );
+                        }
+                        ChatStreamEvent::ReasoningChunk(chunk) => {
+                            let _ = app.emit(
+                                "chat-token",
+                                ChatTokenEvent {
+                                    session_id: session_id.clone(),
+                                    delta: None,
+                                    reasoning_delta: Some(chunk.content),
                                 },
                             );
                         }

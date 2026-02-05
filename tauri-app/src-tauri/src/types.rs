@@ -79,7 +79,8 @@ pub struct ChatSessionCreateResponse {
 #[serde(rename_all = "camelCase")]
 pub struct ChatTokenEvent {
     pub session_id: String,
-    pub delta: String,
+    pub delta: Option<String>,
+    pub reasoning_delta: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -7,6 +7,7 @@ export interface LlmProvider {
   baseUrl?: string | null;
   apiKey: string;
   modelId: string;
+  reasoningEffort?: string | null;
 }
 
 export interface McpRemoteServer {

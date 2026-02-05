@@ -1,5 +1,12 @@
 import { useState, useEffect } from 'react';
 import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '../../components/ui/select';
+import { 
   Save, 
   RefreshCw, 
   Cpu, 
@@ -13,7 +20,8 @@ import {
   ExternalLink,
   ShieldCheck,
   X,
-  Sparkles
+  Sparkles,
+  Brain
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -22,8 +30,10 @@ import { getAppConfig, updateAppConfig, AppConfig, LlmProvider } from '../../int
 import { cn } from '../../lib/cn';
 
 const PRESETS = [
-  { id: 'deepseek', name: 'DeepSeek', kind: 'OpenAI', baseUrl: 'https://api.deepseek.com/v1', modelId: 'deepseek-chat', icon: 'D' },
+  { id: 'deepseek-r1', name: 'DeepSeek R1', kind: 'OpenAI', baseUrl: 'https://api.deepseek.com/v1', modelId: 'deepseek-reasoner', icon: 'R' },
+  { id: 'deepseek', name: 'DeepSeek V3', kind: 'OpenAI', baseUrl: 'https://api.deepseek.com/v1', modelId: 'deepseek-chat', icon: 'D' },
   { id: 'siliconflow', name: '硅基流动', kind: 'OpenAI', baseUrl: 'https://api.siliconflow.cn/v1', modelId: 'deepseek-ai/DeepSeek-V3', icon: 'S' },
+  { id: 'anthropic', name: 'Anthropic Claude', kind: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', modelId: 'claude-3-5-sonnet-20241022', icon: 'A' },
   { id: 'volcengine', name: '火山引擎', kind: 'OpenAI', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', modelId: 'ep-...', icon: 'V' },
   { id: 'minimax', name: 'Minimax', kind: 'OpenAI', baseUrl: 'https://api.minimax.chat/v1', modelId: 'abab6.5-chat', icon: 'M' },
   { id: 'gemini', name: 'Google Gemini', kind: 'Gemini', baseUrl: 'https://generativelanguage.googleapis.com', modelId: 'gemini-2.0-flash', icon: 'G' },
@@ -33,6 +43,7 @@ const PRESETS = [
 const DEFAULT_URLS: Record<string, string> = {
   'OpenAI': 'https://api.openai.com/v1',
   'Gemini': 'https://generativelanguage.googleapis.com',
+  'Anthropic': 'https://api.anthropic.com/v1',
 };
 
 export function SettingsView() {
@@ -93,7 +104,8 @@ export function SettingsView() {
       kind: preset.kind,
       baseUrl: preset.baseUrl,
       apiKey: '',
-      modelId: preset.modelId
+      modelId: preset.modelId,
+      reasoningEffort: null
     };
     const newConfig = {
         ...config,
@@ -316,6 +328,13 @@ export function SettingsView() {
                             )}
                             onClick={() => updateSelectedProvider({ kind: 'Gemini' })}
                         >Google Gemini</button>
+                        <button 
+                            className={cn(
+                                "flex-1 h-10 rounded-lg text-xs font-black transition-all",
+                                selectedProvider.kind === 'Anthropic' ? "bg-background shadow-sm text-foreground" : "opacity-40 hover:opacity-60 text-foreground"
+                            )}
+                            onClick={() => updateSelectedProvider({ kind: 'Anthropic' })}
+                        >Anthropic</button>
                     </div>
                  </div>
 
@@ -367,7 +386,7 @@ export function SettingsView() {
                   </div>
 
 
-                 <div className="space-y-2.5 text-left">
+                  <div className="space-y-2.5 text-left">
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1 flex items-center gap-2">
                         <ShieldCheck className="w-3 h-3" />
                         API Key
@@ -379,6 +398,51 @@ export function SettingsView() {
                       placeholder="在此粘贴您的密钥"
                       className="bg-muted/20 h-12 rounded-xl border-border/50 focus:bg-background transition-all px-4 text-foreground"
                     />
+                 </div>
+
+                 <div className="space-y-2.5 text-left">
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1 flex items-center gap-2">
+                        <Brain className="w-3 h-3" />
+                        推理强度 / 思考预算
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <Select 
+                          value={['low', 'medium', 'high', 'none'].includes(selectedProvider.reasoningEffort || 'none') ? (selectedProvider.reasoningEffort || 'none') : 'custom'} 
+                          onValueChange={(v) => {
+                            if (v === 'custom') {
+                              updateSelectedProvider({ reasoningEffort: '20000' });
+                              return;
+                            }
+                            updateSelectedProvider({ reasoningEffort: v === 'none' ? null : v });
+                          }}
+                        >
+                          <SelectTrigger className="bg-muted/20 h-12 rounded-xl border-border/50 focus:bg-background transition-all px-4 text-sm font-bold text-foreground">
+                            <SelectValue placeholder="选择强度" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">默认 / 关闭</SelectItem>
+                            <SelectItem value="low">低 (Low / Minimal)</SelectItem>
+                            <SelectItem value="medium">中 (Medium)</SelectItem>
+                            <SelectItem value="high">高 (High)</SelectItem>
+                            <SelectItem value="custom">自定义 (数字)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {(!['low', 'medium', 'high', 'none'].includes(selectedProvider.reasoningEffort || '') || selectedProvider.reasoningEffort === 'custom') && (
+                        <div className="flex-[0.6]">
+                          <Input 
+                            value={selectedProvider.reasoningEffort === 'custom' ? '' : (selectedProvider.reasoningEffort || '')}
+                            onChange={(e) => updateSelectedProvider({ reasoningEffort: e.target.value })}
+                            placeholder="如: 24000"
+                            className="bg-muted/20 h-12 rounded-xl border-border/50 focus:bg-background transition-all px-4 font-mono text-sm text-foreground"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[9px] text-muted-foreground/50 mt-1 px-1">
+                      支持 OpenAI o1/o3, Gemini Thinking, Anthropic 思考模型。
+                    </p>
                  </div>
               </div>
 
@@ -437,9 +501,9 @@ export function SettingsView() {
                         </button>
                       ))}
                   </div>
-                  <div className="mt-4 pt-6 border-t border-border/40 text-center">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">所有提供商均支持 OpenAI 兼容协议或 Google 官方协议</p>
-                  </div>
+                   <div className="mt-4 pt-6 border-t border-border/40 text-center">
+                       <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">所有提供商均支持 OpenAI 兼容、Google 官方或 Anthropic 协议</p>
+                   </div>
               </CardContent>
            </Card>
         </div>
