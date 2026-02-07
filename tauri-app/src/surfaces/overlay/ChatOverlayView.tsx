@@ -760,7 +760,7 @@ export function ChatOverlayView() {
         el.scrollHeight - el.clientHeight - frozenOffsetFromBottomRef.current;
       el.scrollTop = Math.max(0, target);
     });
-  }, [input, isStreaming]);
+  }, [input, isStreaming, pendingImages.length]);
 
   const TypingIndicator = () => {
     return (

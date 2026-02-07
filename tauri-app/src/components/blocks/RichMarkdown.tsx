@@ -619,6 +619,76 @@ function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
   );
 }
 
+const markdownComponents: any = {
+  // Block code: react-markdown renders ``` fences as <pre><code ...>...</code></pre>
+  // We render the whole block at the <pre> level to avoid invalid nesting.
+  pre(props: any) {
+    const child: any = (props as any).children;
+    const codeEl = Array.isArray(child) ? child[0] : child;
+    const codeProps = codeEl?.props ?? {};
+    const raw = Array.isArray(codeProps.children)
+      ? codeProps.children.join('')
+      : String(codeProps.children ?? '');
+    const code = raw.endsWith('\n') ? raw.slice(0, -1) : raw;
+    const cls = String(codeProps.className ?? '');
+    const lang = cls.match(/language-(\w+)/)?.[1];
+    const trimmedCode = code.trimStart();
+    const looksLikeSvg =
+      trimmedCode.startsWith('<svg') ||
+      (trimmedCode.startsWith('<?xml') &&
+        (() => {
+          const endDecl = trimmedCode.indexOf('?>');
+          if (endDecl === -1) return false;
+          return trimmedCode.slice(endDecl + 2).trimStart().startsWith('<svg');
+        })());
+
+    if (lang?.toLowerCase() === 'mermaid' || cls.includes('language-mermaid')) {
+      return <MermaidBlock code={code} />;
+    }
+
+    if (
+      lang?.toLowerCase() === 'svg' ||
+      cls.includes('language-svg') ||
+      (lang?.toLowerCase() === 'xml' && looksLikeSvg)
+    ) {
+      return <SvgBlock code={code} />;
+    }
+
+    return <CodeFence language={lang} code={code} />;
+  },
+
+  // Inline code: keep it inline-only.
+  code(props: any) {
+    const { className, children } = props as any;
+    const raw = String(children ?? '');
+    const code = raw.endsWith('\n') ? raw.slice(0, -1) : raw;
+    return (
+      <code className={cn('px-1 py-0.5 rounded bg-muted/40 border border-border/40 font-mono', className)}>
+        {code}
+      </code>
+    );
+  },
+  img(props: any) {
+    const { src, alt } = props as any;
+    return <MarkdownImage src={src} alt={alt} />;
+  },
+  a(props: any) {
+    const { href, children } = props as any;
+    const resolvedHref = resolveLocalAwareUrl(href);
+    if (!resolvedHref) {
+      return <span>{children}</span>;
+    }
+    return (
+      <a href={resolvedHref} target="_blank" rel="noreferrer" className="underline decoration-primary/40 hover:decoration-primary break-all">
+        {children}
+      </a>
+    );
+  },
+};
+
+const remarkPlugins = [remarkGfm, remarkMath];
+const rehypePlugins = [rehypeRaw, rehypeKatex];
+
 export function RichMarkdown({ markdown, className }: { markdown: string; className?: string }) {
   const normalized = useMemo(() => {
     const withMath = normalizeMathMarkdown(markdown);
@@ -627,75 +697,10 @@ export function RichMarkdown({ markdown, className }: { markdown: string; classN
   return (
     <div className={cn('prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-p:my-1.5 prose-li:my-0.5 prose-ul:my-2 prose-ol:my-2 prose-headings:my-3 prose-hr:my-4 prose-pre:my-2', className)}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeRaw, rehypeKatex]}
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
         urlTransform={(url) => url}
-        components={{
-          // Block code: react-markdown renders ``` fences as <pre><code ...>...</code></pre>
-          // We render the whole block at the <pre> level to avoid invalid nesting.
-          pre(props) {
-            const child: any = (props as any).children;
-            const codeEl = Array.isArray(child) ? child[0] : child;
-            const codeProps = codeEl?.props ?? {};
-            const raw = Array.isArray(codeProps.children)
-              ? codeProps.children.join('')
-              : String(codeProps.children ?? '');
-            const code = raw.endsWith('\n') ? raw.slice(0, -1) : raw;
-            const cls = String(codeProps.className ?? '');
-            const lang = cls.match(/language-(\w+)/)?.[1];
-            const trimmedCode = code.trimStart();
-            const looksLikeSvg =
-              trimmedCode.startsWith('<svg') ||
-              (trimmedCode.startsWith('<?xml') &&
-                (() => {
-                  const endDecl = trimmedCode.indexOf('?>');
-                  if (endDecl === -1) return false;
-                  return trimmedCode.slice(endDecl + 2).trimStart().startsWith('<svg');
-                })());
-
-            if (lang?.toLowerCase() === 'mermaid' || cls.includes('language-mermaid')) {
-              return <MermaidBlock code={code} />;
-            }
-
-            if (
-              lang?.toLowerCase() === 'svg' ||
-              cls.includes('language-svg') ||
-              (lang?.toLowerCase() === 'xml' && looksLikeSvg)
-            ) {
-              return <SvgBlock code={code} />;
-            }
-
-            return <CodeFence language={lang} code={code} />;
-          },
-
-          // Inline code: keep it inline-only.
-          code(props) {
-            const { className, children } = props as any;
-            const raw = String(children ?? '');
-            const code = raw.endsWith('\n') ? raw.slice(0, -1) : raw;
-            return (
-              <code className={cn('px-1 py-0.5 rounded bg-muted/40 border border-border/40 font-mono', className)}>
-                {code}
-              </code>
-            );
-          },
-          img(props) {
-            const { src, alt } = props as any;
-            return <MarkdownImage src={src} alt={alt} />;
-          },
-          a(props) {
-            const { href, children } = props as any;
-            const resolvedHref = resolveLocalAwareUrl(href);
-            if (!resolvedHref) {
-              return <span>{children}</span>;
-            }
-            return (
-              <a href={resolvedHref} target="_blank" rel="noreferrer" className="underline decoration-primary/40 hover:decoration-primary break-all">
-                {children}
-              </a>
-            );
-          },
-        }}
+        components={markdownComponents}
       >
         {normalized}
       </ReactMarkdown>
