@@ -17,7 +17,9 @@ pub async fn predict_actions(text: String) -> Result<Vec<PredictedAction>, Strin
 
     // 1. 加载配置，获取 LLM 提供商
     let config = AppConfig::load();
-    let default_llm_id = config.active_provider_id.unwrap();
+    let Some(default_llm_id) = config.translate_provider_id else {
+        return Err("未找到默认翻译提供商".into());
+    };
     let provider = &config
         .llm_providers
         .into_iter()

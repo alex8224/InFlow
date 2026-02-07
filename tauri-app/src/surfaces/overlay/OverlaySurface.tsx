@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -11,7 +11,6 @@ import {
   Minus,
   Pin,
   PinOff,
-  Wrench,
   Share2,
   Check,
   Settings,
@@ -21,8 +20,6 @@ import {
   chatSessionCreate,
   getAppConfig,
   AppConfig,
-  chatToolsCatalog,
-  ToolCatalogItem,
   chatShareCreate,
   SharedMessage,
   updateAppConfig,
@@ -31,13 +28,6 @@ import { cn } from "../../lib/cn";
 import { useInvocationStore } from "../../stores/invocationStore";
 import { useChatStore } from "../../stores/chatStore";
 import { viewRegistry } from "../../core/registry/viewRegistry";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../components/ui/select";
 
 export function OverlaySurface() {
   const currentInvocation = useInvocationStore(
@@ -52,7 +42,6 @@ export function OverlaySurface() {
   const chatSessionProviderId = useChatStore((s) => s.sessionProviderId);
   const chatIsStreaming = useChatStore((s) => s.isStreaming);
   const chatSelectedTools = useChatStore((s) => s.selectedTools);
-  const chatToggleTool = useChatStore((s) => s.toggleTool);
   const chatSetSelectedTools = useChatStore((s) => s.setSelectedTools);
   const chatSetSessionProviderId = useChatStore((s) => s.setSessionProviderId);
   const chatResetSession = useChatStore((s) => s.resetSession);
@@ -66,51 +55,9 @@ export function OverlaySurface() {
     return Object.values(chatToolCalls).find((t) => t.status === "started");
   }, [chatToolCalls]);
 
-  const [toolsOpen, setToolsOpen] = useState(false);
-  const [toolsLoading, setToolsLoading] = useState(false);
-  const [toolsCatalog, setToolsCatalog] = useState<ToolCatalogItem[]>([]);
   const [shareLoading, setShareLoading] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [showTranslateSettings, setShowTranslateSettings] = useState(false);
-
-  const toolsFetchedAtRef = useRef<number>(0);
-  const toolsFetchInFlightRef = useRef<Promise<void> | null>(null);
-  const TOOLS_CACHE_MS = 5 * 60 * 1000;
-
-  const fetchToolsCatalog = async (opts?: {
-    force?: boolean;
-    showLoadingIfEmpty?: boolean;
-  }) => {
-    const force = opts?.force ?? false;
-    const showLoadingIfEmpty = opts?.showLoadingIfEmpty ?? false;
-
-    const now = Date.now();
-    const isFresh =
-      toolsCatalog.length > 0 &&
-      now - toolsFetchedAtRef.current < TOOLS_CACHE_MS;
-    if (!force && isFresh) return;
-
-    if (toolsFetchInFlightRef.current) return;
-
-    if (showLoadingIfEmpty && toolsCatalog.length === 0) {
-      setToolsLoading(true);
-    }
-
-    toolsFetchInFlightRef.current = (async () => {
-      try {
-        const list = await chatToolsCatalog();
-        setToolsCatalog(list);
-        toolsFetchedAtRef.current = Date.now();
-      } catch (err) {
-        console.error("Failed to load tools catalog:", err);
-        // Keep any previously loaded list; only empty state if we never had one.
-        if (toolsCatalog.length === 0) setToolsCatalog([]);
-      } finally {
-        setToolsLoading(false);
-        toolsFetchInFlightRef.current = null;
-      }
-    })();
-  };
 
   useEffect(() => {
     loadConfig();
@@ -171,19 +118,6 @@ export function OverlaySurface() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, []);
-
-  useEffect(() => {
-    if (!toolsOpen) return;
-    const onDown = (e: MouseEvent) => {
-      const el = e.target as HTMLElement | null;
-      if (!el) return;
-      if (el.closest("[data-tools-panel]") || el.closest("[data-tools-button]"))
-        return;
-      setToolsOpen(false);
-    };
-    window.addEventListener("mousedown", onDown, true);
-    return () => window.removeEventListener("mousedown", onDown, true);
-  }, [toolsOpen]);
 
   const toggleMaximize = async () => {
     try {
@@ -388,55 +322,21 @@ export function OverlaySurface() {
         .catch((err) => console.error("Failed to create chat session:", err));
     }
 
-    // Prefetch tools list in the background to avoid a long wait on first click.
-    if (toolsCatalog.length === 0) {
-      const t = window.setTimeout(() => {
-        fetchToolsCatalog();
-      }, 250);
-      return () => window.clearTimeout(t);
-    }
   }, [isChat, config, chatSessionId, chatSessionProviderId]);
-
-  const chatProviderId = useMemo(() => {
-    if (chatSessionProviderId) return chatSessionProviderId;
-    return config?.activeProviderId ?? config?.llmProviders[0]?.id ?? null;
-  }, [chatSessionProviderId, config]);
 
   const currentProvider = useMemo(() => {
     const id = config?.translateProviderId || config?.activeProviderId;
     return config?.llmProviders.find((p) => p.id === id);
   }, [config]);
 
+  const chatProviderId = useMemo(() => {
+    if (chatSessionProviderId) return chatSessionProviderId;
+    return config?.activeProviderId ?? config?.llmProviders[0]?.id ?? null;
+  }, [chatSessionProviderId, config]);
+
   const currentChatProvider = useMemo(() => {
     return config?.llmProviders.find((p) => p.id === chatProviderId);
   }, [config, chatProviderId]);
-
-  const mcpCatalogByServer = useMemo(() => {
-    const m = new Map<
-      string,
-      { serverId: string; serverName: string; items: ToolCatalogItem[] }
-    >();
-    for (const t of toolsCatalog) {
-      if (t.source !== "mcp") continue;
-      const sid = t.serverId ?? "unknown";
-      const sname = t.serverName ?? t.serverId ?? "MCP";
-      const key = `${sid}::${sname}`;
-      const cur = m.get(key) ?? { serverId: sid, serverName: sname, items: [] };
-      cur.items.push(t);
-      m.set(key, cur);
-    }
-    return Array.from(m.values()).map((g) => ({
-      ...g,
-      items: g.items.sort((a, b) => a.title.localeCompare(b.title)),
-    }));
-  }, [toolsCatalog]);
-
-  const builtinCatalog = useMemo(() => {
-    return toolsCatalog
-      .filter((t) => t.source === "builtin")
-      .slice()
-      .sort((a, b) => a.title.localeCompare(b.title));
-  }, [toolsCatalog]);
 
   const handleChatNew = async () => {
     // Keep the currently enabled tools across sessions.
@@ -610,50 +510,6 @@ export function OverlaySurface() {
                 <div className="w-px h-4 bg-border/40 mx-0.5" />
 
                 <div className="flex items-center gap-1">
-                  <Select
-                    value={chatProviderId || ""}
-                    onValueChange={(v) => chatSetSessionProviderId(v)}
-                  >
-                    <SelectTrigger className="h-7 w-auto min-w-[32px] max-w-[140px] border-none bg-transparent shadow-none hover:bg-muted/40 text-[10px] font-bold px-2 gap-1 focus:ring-0 transition-colors">
-                      <SelectValue placeholder="Model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(config?.llmProviders ?? []).map((p) => (
-                        <SelectItem
-                          key={p.id}
-                          value={p.id}
-                          className="text-[11px] font-medium"
-                        >
-                          <div className="flex flex-col">
-                            <span className="font-bold">{p.name}</span>
-                            <span className="text-[9px] opacity-60 font-mono tracking-tighter">
-                              {p.modelId}
-                            </span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <button
-                    onClick={async () => {
-                      const next = !toolsOpen;
-                      setToolsOpen(next);
-                      if (!next) return;
-                      fetchToolsCatalog({ showLoadingIfEmpty: true });
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    data-tools-button
-                    className={cn(
-                      "h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-all active:scale-90 border border-transparent hover:border-border/40",
-                      toolsOpen &&
-                        "bg-primary/10 text-primary border-primary/20 shadow-sm",
-                    )}
-                    title="Tools"
-                  >
-                    <Wrench className="w-3.5 h-3.5" />
-                  </button>
-
                   <button
                     onClick={handleChatNew}
                     onMouseDown={(e) => e.stopPropagation()}
@@ -709,145 +565,6 @@ export function OverlaySurface() {
                 >
                   <Square className="w-3 h-3 fill-current" />
                 </button>
-
-                {toolsOpen && (
-                  <div
-                    data-tools-panel
-                    onMouseDown={(e) => e.stopPropagation()}
-                    className="absolute right-3 top-[calc(100%+8px)] w-[340px] max-w-[calc(100vw-24px)] rounded-2xl border border-border/60 bg-background/95 backdrop-blur-md shadow-[0_20px_60px_rgba(0,0,0,0.25)] p-3 animate-in zoom-in-95 duration-150"
-                  >
-                    <div className="flex items-center justify-between gap-2 px-1 pb-2">
-                      <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                        Capabilities Registry
-                      </div>
-                      <button
-                        type="button"
-                        className="text-[10px] font-bold text-primary hover:opacity-80 transition-opacity"
-                        onClick={() => chatSetSelectedTools([])}
-                      >
-                        Reset
-                      </button>
-                    </div>
-
-                    {toolsLoading ? (
-                      <div className="px-2 py-8 flex flex-col items-center gap-3">
-                        <div className="w-4 h-4 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
-                        <div className="text-[10px] font-bold text-muted-foreground uppercase animate-pulse">
-                          Synchronizing...
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="max-h-[320px] overflow-auto custom-scrollbar pr-1 space-y-3">
-                        {builtinCatalog.length > 0 && (
-                          <div className="rounded-xl border border-border/50 bg-muted/10 p-2">
-                            <div className="px-1 pb-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground/70">
-                              Native Modules
-                            </div>
-                            <div className="space-y-1">
-                              {builtinCatalog.map((t) => {
-                                const checked = chatSelectedTools.includes(
-                                  t.fnName,
-                                );
-                                return (
-                                  <label
-                                    key={t.fnName}
-                                    className={cn(
-                                      "flex items-start gap-2 px-2 py-1.5 rounded-lg transition-colors cursor-pointer",
-                                      checked
-                                        ? "bg-primary/5"
-                                        : "hover:bg-muted/30",
-                                    )}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => chatToggleTool(t.fnName)}
-                                      className="mt-1"
-                                    />
-                                    <div className="min-w-0">
-                                      <div className="text-[11px] font-bold text-foreground truncate">
-                                        {t.title}
-                                      </div>
-                                      {t.description && (
-                                        <div className="text-[10px] text-muted-foreground/80 leading-snug line-clamp-2">
-                                          {t.description}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-
-                        {mcpCatalogByServer.length > 0 && (
-                          <div className="space-y-2">
-                            {mcpCatalogByServer.map((g) => (
-                              <div
-                                key={`${g.serverId}:${g.serverName}`}
-                                className="rounded-xl border border-border/50 bg-muted/10 p-2"
-                              >
-                                <div className="px-1 pb-1 flex items-center justify-between gap-2">
-                                  <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/70 truncate">
-                                    MCP Provider • {g.serverName}
-                                  </div>
-                                </div>
-                                <div className="space-y-1">
-                                  {g.items.map((t) => {
-                                    const checked = chatSelectedTools.includes(
-                                      t.fnName,
-                                    );
-                                    return (
-                                      <label
-                                        key={t.fnName}
-                                        className={cn(
-                                          "flex items-start gap-2 px-2 py-1.5 rounded-lg transition-colors cursor-pointer",
-                                          checked
-                                            ? "bg-primary/5"
-                                            : "hover:bg-muted/30",
-                                        )}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={checked}
-                                          onChange={() =>
-                                            chatToggleTool(t.fnName)
-                                          }
-                                          className="mt-1"
-                                        />
-                                        <div className="min-w-0">
-                                          <div className="text-[11px] font-bold text-foreground truncate">
-                                            {t.title}
-                                          </div>
-                                          {t.description && (
-                                            <div className="text-[10px] text-muted-foreground/80 leading-snug line-clamp-2">
-                                              {t.description}
-                                            </div>
-                                          )}
-                                        </div>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {builtinCatalog.length === 0 &&
-                          mcpCatalogByServer.length === 0 && (
-                            <div className="px-4 py-8 text-center">
-                              <Wrench className="w-8 h-8 text-muted-foreground/20 mx-auto mb-2" />
-                              <div className="text-[10px] font-bold text-muted-foreground uppercase">
-                                No modules detected
-                              </div>
-                            </div>
-                          )}
-                      </div>
-                    )}
-                  </div>
-                )}
               </>
             )}
 
