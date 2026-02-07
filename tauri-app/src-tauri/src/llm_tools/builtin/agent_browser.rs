@@ -49,167 +49,429 @@ struct CommandExec {
 }
 
 fn build(provider: &LlmProvider) -> Tool {
+    let mut properties = serde_json::Map::new();
+
+    // Core properties
+    properties.insert(
+        "action".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Browser action to execute.",
+            "enum": [
+                "open", "snapshot", "click", "dblclick", "fill", "type", "press",
+                "hover", "check", "uncheck", "select", "scroll", "scrollintoview",
+                "wait", "get", "tab", "screenshot", "back", "forward", "reload",
+                "close", "dialog", "frame", "drag", "console", "errors", "set",
+                "find", "mouse", "keydown", "keyup"
+            ]
+        }),
+    );
+    properties.insert(
+        "session".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Optional session name. If omitted, uses chat-session-isolated default."
+        }),
+    );
+    properties.insert(
+        "timeoutSec".to_string(),
+        serde_json::json!({
+            "type": "number",
+            "description": "Command timeout in seconds (1-300).",
+            "default": 30
+        }),
+    );
+    properties.insert(
+        "execTimeoutSec".to_string(),
+        serde_json::json!({
+            "type": "number",
+            "description": "Alias of timeoutSec. Command timeout in seconds (1-300)."
+        }),
+    );
+    properties.insert(
+        "timeoutMs".to_string(),
+        serde_json::json!({
+            "type": "integer",
+            "description": "Command timeout in milliseconds. Higher priority than timeoutSec/execTimeoutSec.",
+            "minimum": 1
+        }),
+    );
+    properties.insert(
+        "headed".to_string(),
+        serde_json::json!({
+            "type": "boolean",
+            "description": "Pass --headed to agent-browser to show the browser window.",
+            "default": false
+        }),
+    );
+
+    // Basic action args
+    properties.insert(
+        "url".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "URL for open action. Only http/https are allowed."
+        }),
+    );
+    properties.insert(
+        "selector".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Element selector or snapshot ref such as @e1."
+        }),
+    );
+    properties.insert(
+        "text".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Text value for fill/type/select, or wait text when waitMode=text."
+        }),
+    );
+    properties.insert(
+        "key".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Keyboard key for press action, e.g. Enter, Tab, Control+a."
+        }),
+    );
+
+    // Find args
+    properties.insert(
+        "findKind".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Kind of find query (role, text, label, placeholder, alt, title, testid, first, last, nth).",
+            "enum": ["role", "text", "label", "placeholder", "alt", "title", "testid", "first", "last", "nth"]
+        }),
+    );
+    properties.insert(
+        "findQuery".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Query value for find action (e.g. 'Submit' for find text, 'button' for find role)."
+        }),
+    );
+    properties.insert(
+        "findAction".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Action to perform on found element (click, fill, check, hover, text).",
+            "enum": ["click", "fill", "check", "hover", "text"]
+        }),
+    );
+    properties.insert(
+        "findValue".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Optional value for find action (e.g. text to fill)."
+        }),
+    );
+    properties.insert(
+        "nth".to_string(),
+        serde_json::json!({
+            "type": "integer",
+            "description": "Index for find nth action.",
+            "minimum": 0
+        }),
+    );
+
+    // Mouse args
+    properties.insert(
+        "mouseAction".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Mouse subcommand (move, down, up, wheel).",
+            "enum": ["move", "down", "up", "wheel"]
+        }),
+    );
+    properties.insert(
+        "x".to_string(),
+        serde_json::json!({
+            "type": "integer",
+            "description": "X coordinate for mouse move."
+        }),
+    );
+    properties.insert(
+        "y".to_string(),
+        serde_json::json!({
+            "type": "integer",
+            "description": "Y coordinate for mouse move."
+        }),
+    );
+    properties.insert(
+        "button".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Mouse button (left, right, middle).",
+            "enum": ["left", "right", "middle"],
+            "default": "left"
+        }),
+    );
+    properties.insert(
+        "deltaX".to_string(),
+        serde_json::json!({
+            "type": "integer",
+            "description": "Horizontal scroll amount for mouse wheel."
+        }),
+    );
+    properties.insert(
+        "deltaY".to_string(),
+        serde_json::json!({
+            "type": "integer",
+            "description": "Vertical scroll amount for mouse wheel."
+        }),
+    );
+
+    // Scroll args
+    properties.insert(
+        "scrollDirection".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Direction for scroll action.",
+            "enum": ["up", "down", "left", "right"],
+            "default": "down"
+        }),
+    );
+    properties.insert(
+        "scrollAmount".to_string(),
+        serde_json::json!({
+            "type": "integer",
+            "description": "Amount of pixels to scroll (optional).",
+            "minimum": 1
+        }),
+    );
+
+    // Dialog args
+    properties.insert(
+        "dialogAction".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Action for dialog (alert/confirm/prompt).",
+            "enum": ["accept", "dismiss"],
+            "default": "accept"
+        }),
+    );
+    properties.insert(
+        "promptText".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Text to enter in prompt dialog (optional)."
+        }),
+    );
+
+    // Frame args
+    properties.insert(
+        "frameMode".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Target frame selection mode.",
+            "enum": ["select", "main"],
+            "default": "select"
+        }),
+    );
+
+    // Drag args
+    properties.insert(
+        "targetSelector".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Target element selector for drag and drop action."
+        }),
+    );
+
+    // Set/Settings args
+    properties.insert(
+        "setKind".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Kind of setting to change.",
+            "enum": ["viewport", "device", "geo", "offline", "media"]
+        }),
+    );
+    properties.insert(
+        "width".to_string(),
+        serde_json::json!({
+            "type": "integer",
+            "description": "Viewport width in pixels.",
+            "minimum": 1
+        }),
+    );
+    properties.insert(
+        "height".to_string(),
+        serde_json::json!({
+            "type": "integer",
+            "description": "Viewport height in pixels.",
+            "minimum": 1
+        }),
+    );
+    properties.insert(
+        "deviceName".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Device name to emulate (e.g. 'iPhone 14')."
+        }),
+    );
+    properties.insert(
+        "latitude".to_string(),
+        serde_json::json!({
+            "type": "number",
+            "description": "Latitude for geolocation."
+        }),
+    );
+    properties.insert(
+        "longitude".to_string(),
+        serde_json::json!({
+            "type": "number",
+            "description": "Longitude for geolocation."
+        }),
+    );
+    properties.insert(
+        "offline".to_string(),
+        serde_json::json!({
+            "type": "boolean",
+            "description": "Toggle offline mode (true/false)."
+        }),
+    );
+    properties.insert(
+        "mediaState".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Emulated media state.",
+            "enum": ["dark", "light"]
+        }),
+    );
+
+    // Snapshot args
+    properties.insert(
+        "snapshotInteractive".to_string(),
+        serde_json::json!({
+            "type": "boolean",
+            "description": "snapshot: include interactive elements only.",
+            "default": true
+        }),
+    );
+    properties.insert(
+        "snapshotCursor".to_string(),
+        serde_json::json!({
+            "type": "boolean",
+            "description": "snapshot: include cursor-interactive elements.",
+            "default": false
+        }),
+    );
+    properties.insert(
+        "snapshotCompact".to_string(),
+        serde_json::json!({
+            "type": "boolean",
+            "description": "snapshot: compact tree output.",
+            "default": true
+        }),
+    );
+    properties.insert(
+        "snapshotDepth".to_string(),
+        serde_json::json!({
+            "type": "integer",
+            "description": "snapshot: optional max tree depth (1-20).",
+            "minimum": 1,
+            "maximum": 20
+        }),
+    );
+    properties.insert(
+        "snapshotScope".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "snapshot: optional CSS scope selector."
+        }),
+    );
+
+    // Wait args
+    properties.insert(
+        "waitMode".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "wait: selector|ms|text|url|load",
+            "enum": ["selector", "ms", "text", "url", "load"],
+            "default": "selector"
+        }),
+    );
+    properties.insert(
+        "waitValue".to_string(),
+        serde_json::json!({
+            "description": "wait: selector string, milliseconds, text, URL pattern, or load state value depending on waitMode."
+        }),
+    );
+    properties.insert(
+        "loadState".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "wait load state.",
+            "enum": ["load", "domcontentloaded", "networkidle"]
+        }),
+    );
+
+    // Get args
+    properties.insert(
+        "getKind".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "get subcommand.",
+            "enum": ["text", "html", "value", "attr", "title", "url", "count", "box"]
+        }),
+    );
+    properties.insert(
+        "attrName".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Attribute name when getKind=attr."
+        }),
+    );
+
+    // Tab args
+    properties.insert(
+        "tabMode".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "tab subcommand: list|new|switch|close",
+            "enum": ["list", "new", "switch", "close"],
+            "default": "list"
+        }),
+    );
+    properties.insert(
+        "tabIndex".to_string(),
+        serde_json::json!({
+            "type": "integer",
+            "description": "tab index (0-based) used by switch/close.",
+            "minimum": 0
+        }),
+    );
+    properties.insert(
+        "tabUrl".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Optional URL for tab new action. Only http/https are allowed."
+        }),
+    );
+
+    // Screenshot args
+    properties.insert(
+        "screenshotPath".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Optional output path for screenshot."
+        }),
+    );
+    properties.insert(
+        "screenshotFull".to_string(),
+        serde_json::json!({
+            "type": "boolean",
+            "description": "Take full-page screenshot.",
+            "default": false
+        }),
+    );
+
     let schema = serde_json::json!({
         "type": "object",
         "additionalProperties": false,
-        "properties": {
-            "action": {
-                "type": "string",
-                "description": "Browser action to execute.",
-                "enum": [
-                    "open",
-                    "snapshot",
-                    "click",
-                    "dblclick",
-                    "fill",
-                    "type",
-                    "press",
-                    "hover",
-                    "check",
-                    "uncheck",
-                    "select",
-                    "scroll",
-                    "scrollintoview",
-                    "wait",
-                    "get",
-                    "tab",
-                    "screenshot",
-                    "back",
-                    "forward",
-                    "reload",
-                    "close"
-                ]
-            },
-            "session": {
-                "type": "string",
-                "description": "Optional session name. If omitted, uses chat-session-isolated default."
-            },
-            "timeoutSec": {
-                "type": "number",
-                "description": "Command timeout in seconds (1-300).",
-                "default": 30
-            },
-            "execTimeoutSec": {
-                "type": "number",
-                "description": "Alias of timeoutSec. Command timeout in seconds (1-300)."
-            },
-            "timeoutMs": {
-                "type": "integer",
-                "description": "Command timeout in milliseconds. Higher priority than timeoutSec/execTimeoutSec.",
-                "minimum": 1
-            },
-            "headed": {
-                "type": "boolean",
-                "description": "Pass --headed to agent-browser to show the browser window.",
-                "default": false
-            },
-
-            "url": {
-                "type": "string",
-                "description": "URL for open action. Only http/https are allowed."
-            },
-            "selector": {
-                "type": "string",
-                "description": "Element selector or snapshot ref such as @e1."
-            },
-            "text": {
-                "type": "string",
-                "description": "Text value for fill/type/select, or wait text when waitMode=text."
-            },
-            "key": {
-                "type": "string",
-                "description": "Keyboard key for press action, e.g. Enter, Tab, Control+a."
-            },
-
-            "scrollDirection": {
-                "type": "string",
-                "description": "Direction for scroll action.",
-                "enum": ["up", "down", "left", "right"],
-                "default": "down"
-            },
-            "scrollAmount": {
-                "type": "integer",
-                "description": "Amount of pixels to scroll (optional).",
-                "minimum": 1
-            },
-
-            "snapshotInteractive": {
-                "type": "boolean",
-                "description": "snapshot: include interactive elements only.",
-                "default": true
-            },
-            "snapshotCursor": {
-                "type": "boolean",
-                "description": "snapshot: include cursor-interactive elements.",
-                "default": false
-            },
-            "snapshotCompact": {
-                "type": "boolean",
-                "description": "snapshot: compact tree output.",
-                "default": true
-            },
-            "snapshotDepth": {
-                "type": "integer",
-                "description": "snapshot: optional max tree depth (1-20).",
-                "minimum": 1,
-                "maximum": 20
-            },
-            "snapshotScope": {
-                "type": "string",
-                "description": "snapshot: optional CSS scope selector."
-            },
-
-            "waitMode": {
-                "type": "string",
-                "description": "wait: selector|ms|text|url|load",
-                "enum": ["selector", "ms", "text", "url", "load"],
-                "default": "selector"
-            },
-            "waitValue": {
-                "description": "wait: selector string, milliseconds, text, URL pattern, or load state value depending on waitMode."
-            },
-            "loadState": {
-                "type": "string",
-                "description": "wait load state.",
-                "enum": ["load", "domcontentloaded", "networkidle"]
-            },
-
-            "getKind": {
-                "type": "string",
-                "description": "get subcommand.",
-                "enum": ["text", "html", "value", "attr", "title", "url", "count", "box"]
-            },
-            "attrName": {
-                "type": "string",
-                "description": "Attribute name when getKind=attr."
-            },
-
-            "tabMode": {
-                "type": "string",
-                "description": "tab subcommand: list|new|switch|close",
-                "enum": ["list", "new", "switch", "close"],
-                "default": "list"
-            },
-            "tabIndex": {
-                "type": "integer",
-                "description": "tab index (0-based) used by switch/close.",
-                "minimum": 0
-            },
-            "tabUrl": {
-                "type": "string",
-                "description": "Optional URL for tab new action. Only http/https are allowed."
-            },
-
-            "screenshotPath": {
-                "type": "string",
-                "description": "Optional output path for screenshot."
-            },
-            "screenshotFull": {
-                "type": "boolean",
-                "description": "Take full-page screenshot.",
-                "default": false
-            }
-        },
+        "properties": properties,
         "required": ["action"]
     });
 
@@ -1060,6 +1322,129 @@ fn build_cli_args(
         }
         "reload" => {
             out.push("reload".to_string());
+        }
+        "dialog" => {
+            out.push("dialog".to_string());
+            let action = arg_str(args, "dialogAction").unwrap_or("accept");
+            out.push(action.to_string());
+            if action == "accept" {
+                if let Some(prompt) = arg_str(args, "promptText") {
+                    out.push(prompt.to_string());
+                }
+            }
+        }
+        "frame" => {
+            out.push("frame".to_string());
+            let mode = arg_str(args, "frameMode").unwrap_or("select");
+            if mode == "main" {
+                out.push("main".to_string());
+            } else {
+                out.push(required_selector(args, "frame")?.to_string());
+            }
+        }
+        "drag" => {
+            out.push("drag".to_string());
+            out.push(required_selector(args, "drag source")?.to_string());
+            let target = arg_str(args, "targetSelector")
+                .ok_or_else(|| "drag requires targetSelector".to_string())?;
+            out.push(target.to_string());
+        }
+        "console" => {
+            out.push("console".to_string());
+        }
+        "errors" => {
+            out.push("errors".to_string());
+        }
+        "set" => {
+            out.push("set".to_string());
+            let kind = arg_str(args, "setKind")
+                .ok_or_else(|| "set requires setKind".to_string())?;
+            out.push(kind.to_string());
+            match kind {
+                "viewport" => {
+                    let w = arg_u64_any(args, &["width"]).ok_or_else(|| "set viewport requires width".to_string())?;
+                    let h = arg_u64_any(args, &["height"]).ok_or_else(|| "set viewport requires height".to_string())?;
+                    out.push(w.to_string());
+                    out.push(h.to_string());
+                }
+                "device" => {
+                    let name = arg_str(args, "deviceName").ok_or_else(|| "set device requires deviceName".to_string())?;
+                    out.push(name.to_string());
+                }
+                "geo" => {
+                    let lat = args.get("latitude").and_then(|v| v.as_f64()).ok_or_else(|| "set geo requires latitude".to_string())?;
+                    let lng = args.get("longitude").and_then(|v| v.as_f64()).ok_or_else(|| "set geo requires longitude".to_string())?;
+                    out.push(lat.to_string());
+                    out.push(lng.to_string());
+                }
+                "offline" => {
+                    let off = arg_bool_any(args, &["offline"], true);
+                    out.push(if off { "on".to_string() } else { "off".to_string() });
+                }
+                "media" => {
+                    let state = arg_str(args, "mediaState").ok_or_else(|| "set media requires mediaState".to_string())?;
+                    out.push(state.to_string());
+                }
+                _ => return Err("setKind must be one of: viewport, device, geo, offline, media".to_string()),
+            }
+        }
+        "keydown" => {
+            out.push("keydown".to_string());
+            out.push(arg_str(args, "key").ok_or_else(|| "keydown requires key".to_string())?.to_string());
+        }
+        "keyup" => {
+            out.push("keyup".to_string());
+            out.push(arg_str(args, "key").ok_or_else(|| "keyup requires key".to_string())?.to_string());
+        }
+        "mouse" => {
+            out.push("mouse".to_string());
+            let sub = arg_str(args, "mouseAction").ok_or_else(|| "mouse requires mouseAction".to_string())?;
+            out.push(sub.to_string());
+            match sub {
+                "move" => {
+                    let x = arg_u64_any(args, &["x"]).ok_or_else(|| "mouse move requires x".to_string())?;
+                    let y = arg_u64_any(args, &["y"]).ok_or_else(|| "mouse move requires y".to_string())?;
+                    out.push(x.to_string());
+                    out.push(y.to_string());
+                }
+                "down" | "up" => {
+                    if let Some(btn) = arg_str(args, "button") {
+                        out.push(btn.to_string());
+                    }
+                }
+                "wheel" => {
+                    let dy = arg_u64_any(args, &["deltaY"]).unwrap_or(0);
+                    let dx = arg_u64_any(args, &["deltaX"]).unwrap_or(0);
+                    out.push(dy.to_string());
+                    out.push(dx.to_string());
+                }
+                _ => return Err("mouseAction must be move, down, up, or wheel".to_string()),
+            }
+        }
+        "find" => {
+            out.push("find".to_string());
+            let kind = arg_str(args, "findKind").ok_or_else(|| "find requires findKind".to_string())?;
+            out.push(kind.to_string());
+
+            if kind == "nth" {
+                let n = arg_u64_any(args, &["nth"]).ok_or_else(|| "find nth requires nth".to_string())?;
+                out.push(n.to_string());
+            }
+
+            if kind != "first" && kind != "last" && kind != "nth" {
+                let query = arg_str(args, "findQuery").ok_or_else(|| format!("find {} requires findQuery", kind))?;
+                out.push(query.to_string());
+            } else {
+                let sel = arg_str_any(args, &["selector", "findQuery"]).ok_or_else(|| format!("find {} requires selector", kind))?;
+                out.push(sel.to_string());
+            }
+
+            let sub_action = arg_str(args, "findAction").ok_or_else(|| "find requires findAction".to_string())?;
+            out.push(sub_action.to_string());
+
+            if let Some(val) = arg_str_any(args, &["findValue", "text", "value"]) {
+                out.push(val.to_string());
+            }
         }
         "wait" => {
             out.push("wait".to_string());
