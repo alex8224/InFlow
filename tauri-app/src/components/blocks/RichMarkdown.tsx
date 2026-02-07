@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { Copy, Check, Maximize, X } from 'lucide-react';
 import 'prismjs/themes/prism.css';
 import 'katex/dist/katex.min.css';
@@ -23,10 +24,206 @@ import 'prismjs/components/prism-yaml';
 const Prism: any = (PrismNS as any).default ?? PrismNS;
 
 import { cn } from '../../lib/cn';
+import { readLocalImageDataUrl } from '../../integrations/tauri/api';
 
 type MermaidRenderResult = { svg: string };
 
 type HighlightResult = { html: string; language: string };
+
+function isWindowsAbsolutePath(input: string): boolean {
+  return /^[a-zA-Z]:[\\/]/.test(input);
+}
+
+function isUncPath(input: string): boolean {
+  return /^\\\\[^\\/]+[\\/][^\\/]+/.test(input);
+}
+
+function isLikelyAbsoluteLocalPath(input: string): boolean {
+  return isWindowsAbsolutePath(input) || isUncPath(input) || input.startsWith('/');
+}
+
+function normalizeLocalPath(inputPath: string): string {
+  let path = inputPath.trim();
+  if (!path) return '';
+
+  // Common markdown-escape loss case from agent-browser paths.
+  path = path.replace(/([^\\/])\.agent-browser([\\/]|$)/i, '$1\\.agent-browser$2');
+
+  if (isWindowsAbsolutePath(path)) {
+    path = path.replace(/\\/g, '/');
+    path = path.replace(/^([a-zA-Z]):(?!\/)/, '$1:/');
+    return path;
+  }
+
+  if (isUncPath(path)) {
+    return `//${path.replace(/^\\\\/, '').replace(/\\/g, '/')}`;
+  }
+
+  if (path.startsWith('/')) {
+    return path.replace(/\\/g, '/');
+  }
+
+  return path;
+}
+
+function toAssetUrl(localPath: string): string {
+  const normalized = normalizeLocalPath(localPath);
+  if (!normalized) return '';
+  try {
+    const converted = convertFileSrc(normalized);
+    if (!converted || converted === normalized) return '';
+    return converted;
+  } catch {
+    return '';
+  }
+}
+
+function normalizeFileUrlToPath(fileUrl: string): string | null {
+  try {
+    const parsed = new URL(fileUrl);
+    if (parsed.protocol !== 'file:') return null;
+    let path = decodeURIComponent(parsed.pathname || '');
+    if (parsed.host) {
+      const host = decodeURIComponent(parsed.host);
+      path = `\\\\${host}${path.replace(/\//g, '\\')}`;
+    }
+    if (/^\/[a-zA-Z]:\//.test(path)) {
+      path = path.slice(1);
+    }
+    return path.replace(/\//g, '\\');
+  } catch {
+    return null;
+  }
+}
+
+function isBlockedScheme(url: string): boolean {
+  const lower = url.trim().toLowerCase();
+  return lower.startsWith('javascript:') || lower.startsWith('vbscript:') || lower.startsWith('data:text/html');
+}
+
+function hasImageExtension(input: string): boolean {
+  const base = input.split('#')[0]?.split('?')[0] ?? input;
+  const lower = base.toLowerCase();
+  return (
+    lower.endsWith('.png') ||
+    lower.endsWith('.jpg') ||
+    lower.endsWith('.jpeg') ||
+    lower.endsWith('.gif') ||
+    lower.endsWith('.webp') ||
+    lower.endsWith('.bmp') ||
+    lower.endsWith('.svg')
+  );
+}
+
+function hasUrlScheme(input: string): boolean {
+  return /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(input);
+}
+
+function isLikelyRelativeLocalImagePath(input: string): boolean {
+  const s = input.trim();
+  if (!s) return false;
+  if (hasUrlScheme(s)) return false;
+  if (s.startsWith('//')) return false;
+  if (s.startsWith('#')) return false;
+  if (s.startsWith('?')) return false;
+  if (s.startsWith('./') || s.startsWith('../') || s.startsWith('.\\') || s.startsWith('..\\')) return true;
+  if (s.includes('\\')) return true;
+  return hasImageExtension(s);
+}
+
+function resolveLocalAwareUrl(rawUrl?: string): string {
+  const url = String(rawUrl ?? '').trim();
+  if (!url) return '';
+  if (isBlockedScheme(url)) return '';
+
+  const lower = url.toLowerCase();
+  if (lower.startsWith('file://')) {
+    const filePath = normalizeFileUrlToPath(url);
+    if (!filePath) return '';
+    const assetUrl = toAssetUrl(filePath);
+    return assetUrl || localPathToFileUrl(filePath);
+  }
+
+  if (isLikelyAbsoluteLocalPath(url)) {
+    const assetUrl = toAssetUrl(url);
+    return assetUrl || localPathToFileUrl(url);
+  }
+
+  return url;
+}
+
+function extractLocalPath(rawUrl?: string): string | null {
+  const url = String(rawUrl ?? '').trim();
+  if (!url) return null;
+
+  const lower = url.toLowerCase();
+  if (lower.startsWith('file://')) {
+    const filePath = normalizeFileUrlToPath(url);
+    if (!filePath) return null;
+    const normalized = normalizeLocalPath(filePath);
+    return normalized || null;
+  }
+
+  if (isLikelyAbsoluteLocalPath(url)) {
+    const normalized = normalizeLocalPath(url);
+    return normalized || null;
+  }
+
+  if (isLikelyRelativeLocalImagePath(url)) {
+    return url;
+  }
+
+  return null;
+}
+
+function localPathToFileUrl(inputPath: string): string {
+  const path = normalizeLocalPath(inputPath);
+  if (!path) return '';
+
+  if (isWindowsAbsolutePath(path)) {
+    let p = path.replace(/\\/g, '/');
+    p = p.replace(/^([a-zA-Z]):(?!\/)/, '$1:/');
+    return `file:///${encodeURI(p)}`;
+  }
+
+  if (isUncPath(path)) {
+    const p = path.replace(/^\\\\/, '').replace(/\\/g, '/');
+    return `file://${encodeURI(p)}`;
+  }
+
+  if (path.startsWith('/')) {
+    return `file://${encodeURI(path)}`;
+  }
+
+  return '';
+}
+
+function normalizeLocalMarkdownLinks(markdown: string): string {
+  return markdown.replace(/(!?\[[^\]]*\]\()([^\)]+)(\))/g, (full, prefix, rawDest, suffix) => {
+    const dest = String(rawDest ?? '').trim();
+    if (!dest) return full;
+
+    const wrapped = dest.startsWith('<') && dest.endsWith('>');
+    const candidate = wrapped ? dest.slice(1, -1).trim() : dest;
+    if (!candidate) return full;
+
+    if (isBlockedScheme(candidate)) return `${prefix}${candidate}${suffix}`;
+
+    if (candidate.toLowerCase().startsWith('file://')) {
+      const filePath = normalizeFileUrlToPath(candidate);
+      if (!filePath) return full;
+      const canonical = localPathToFileUrl(filePath);
+      return canonical ? `${prefix}${canonical}${suffix}` : full;
+    }
+
+    if (isLikelyAbsoluteLocalPath(candidate)) {
+      const canonical = localPathToFileUrl(candidate);
+      return canonical ? `${prefix}${canonical}${suffix}` : full;
+    }
+
+    return full;
+  });
+}
 
 function splitByFencedCodeBlocks(markdown: string): Array<{ kind: 'text' | 'fence'; value: string }> {
   const out: Array<{ kind: 'text' | 'fence'; value: string }> = [];
@@ -360,13 +557,79 @@ function MermaidBlock({ code }: { code: string }) {
   );
 }
 
+function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
+  const raw = String(src ?? '').trim();
+  const [resolvedSrc, setResolvedSrc] = useState(() => {
+    const localPath = extractLocalPath(raw);
+    if (localPath) return '';
+    return resolveLocalAwareUrl(raw);
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    const localPath = extractLocalPath(raw);
+
+    if (!localPath) {
+      setResolvedSrc(resolveLocalAwareUrl(raw));
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    readLocalImageDataUrl(localPath)
+      .then((dataUrl) => {
+        if (cancelled) return;
+        if (dataUrl) {
+          setResolvedSrc(dataUrl);
+          return;
+        }
+        if (isLikelyAbsoluteLocalPath(localPath)) {
+          const fallback = toAssetUrl(localPath) || localPathToFileUrl(localPath);
+          setResolvedSrc(fallback);
+          return;
+        }
+        setResolvedSrc('');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        if (isLikelyAbsoluteLocalPath(localPath)) {
+          const fallback = toAssetUrl(localPath) || localPathToFileUrl(localPath);
+          setResolvedSrc(fallback);
+          return;
+        }
+        setResolvedSrc('');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [raw]);
+
+  if (!resolvedSrc) {
+    return <span className="text-xs text-muted-foreground">[invalid image src]</span>;
+  }
+
+  return (
+    <img
+      src={resolvedSrc}
+      alt={alt ?? 'image'}
+      loading="lazy"
+      className="max-w-full h-auto rounded-xl border border-border/40"
+    />
+  );
+}
+
 export function RichMarkdown({ markdown, className }: { markdown: string; className?: string }) {
-  const normalized = useMemo(() => normalizeMathMarkdown(markdown), [markdown]);
+  const normalized = useMemo(() => {
+    const withMath = normalizeMathMarkdown(markdown);
+    return normalizeLocalMarkdownLinks(withMath);
+  }, [markdown]);
   return (
     <div className={cn('prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-p:my-1.5 prose-li:my-0.5 prose-ul:my-2 prose-ol:my-2 prose-headings:my-3 prose-hr:my-4 prose-pre:my-2', className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeRaw, rehypeKatex]}
+        urlTransform={(url) => url}
         components={{
           // Block code: react-markdown renders ``` fences as <pre><code ...>...</code></pre>
           // We render the whole block at the <pre> level to avoid invalid nesting.
@@ -414,6 +677,22 @@ export function RichMarkdown({ markdown, className }: { markdown: string; classN
               <code className={cn('px-1 py-0.5 rounded bg-muted/40 border border-border/40 font-mono', className)}>
                 {code}
               </code>
+            );
+          },
+          img(props) {
+            const { src, alt } = props as any;
+            return <MarkdownImage src={src} alt={alt} />;
+          },
+          a(props) {
+            const { href, children } = props as any;
+            const resolvedHref = resolveLocalAwareUrl(href);
+            if (!resolvedHref) {
+              return <span>{children}</span>;
+            }
+            return (
+              <a href={resolvedHref} target="_blank" rel="noreferrer" className="underline decoration-primary/40 hover:decoration-primary break-all">
+                {children}
+              </a>
             );
           },
         }}

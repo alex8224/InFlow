@@ -51,6 +51,14 @@ type ChatToolResultEvent = {
   content: unknown;
 };
 
+type SendOverride =
+  | string
+  | {
+      text?: string;
+      images?: string[];
+      preserveComposer?: boolean;
+    };
+
 function FloatingCopyButton({
   text,
   title,
@@ -151,6 +159,9 @@ export function ChatOverlayView() {
   const frozenScrollTopRef = useRef(0);
   const frozenOffsetFromBottomRef = useRef(0);
   const typingUnfreezeTimerRef = useRef<number | null>(null);
+  const handleSendRef = useRef<((override?: SendOverride) => Promise<void>) | null>(
+    null,
+  );
   const [isInputVisible, setIsInputVisible] = useState(true);
 
   const lastPrefillInvocationIdRef = useRef<string | null>(null);
@@ -542,15 +553,7 @@ export function ChatOverlayView() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSend = async (
-    override?:
-      | string
-      | {
-          text?: string;
-          images?: string[];
-          preserveComposer?: boolean;
-        },
-  ) => {
+  const handleSend = async (override?: SendOverride) => {
     const overrideText = typeof override === "string" ? override : override?.text;
     const overrideImages =
       typeof override === "object" ? override.images : undefined;
@@ -660,6 +663,8 @@ export function ChatOverlayView() {
     }
   };
 
+  handleSendRef.current = handleSend;
+
   const handleResend = useCallback(
     (parts: ChatMessagePart[]) => {
       if (isStreaming) return;
@@ -671,9 +676,11 @@ export function ChatOverlayView() {
       const images = parts
         .filter((p): p is { type: "image"; content: string } => p.type === "image")
         .map((p) => p.content);
-      void handleSend({ text, images, preserveComposer: true });
+      const send = handleSendRef.current;
+      if (!send) return;
+      void send({ text, images, preserveComposer: true });
     },
-    [isStreaming, handleSend],
+    [isStreaming],
   );
 
   const handlePaste = async (e: React.ClipboardEvent) => {
@@ -720,6 +727,7 @@ export function ChatOverlayView() {
   };
 
   const freezeAutoScrollWhileTyping = () => {
+    if (!isStreaming) return;
     autoScrollRef.current = false;
     if (listRef.current) {
       frozenScrollTopRef.current = listRef.current.scrollTop;
@@ -743,6 +751,7 @@ export function ChatOverlayView() {
   };
 
   useLayoutEffect(() => {
+    if (!isStreaming) return;
     if (autoScrollRef.current) return;
     const el = listRef.current;
     if (!el) return;
@@ -751,7 +760,7 @@ export function ChatOverlayView() {
         el.scrollHeight - el.clientHeight - frozenOffsetFromBottomRef.current;
       el.scrollTop = Math.max(0, target);
     });
-  }, [input]);
+  }, [input, isStreaming]);
 
   const TypingIndicator = () => {
     return (

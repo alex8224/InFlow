@@ -17,6 +17,7 @@ use url::Url;
 use crate::config::{AppConfig, LlmProvider};
 use crate::genai_client::sanitize_tool_schema_for_provider;
 use crate::llm_tools::ToolExecResult;
+use crate::share_server;
 use crate::state::AppState;
 
 use super::BuiltinToolSpec;
@@ -24,7 +25,7 @@ use super::BuiltinToolSpec;
 pub const TOOL_AGENT_BROWSER: &str = "inflow__agent_browser";
 
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
-const MAX_TIMEOUT_SECS: u64 = 120;
+const MAX_TIMEOUT_SECS: u64 = 300;
 const MIN_TIMEOUT_SECS: u64 = 1;
 const MAX_RAW_CHARS: usize = 20_000;
 const MAX_RESPONSE_CHARS: usize = 8_000;
@@ -75,8 +76,22 @@ fn build(provider: &LlmProvider) -> Tool {
             },
             "timeoutSec": {
                 "type": "number",
-                "description": "Command timeout in seconds (1-120).",
+                "description": "Command timeout in seconds (1-300).",
                 "default": 30
+            },
+            "execTimeoutSec": {
+                "type": "number",
+                "description": "Alias of timeoutSec. Command timeout in seconds (1-300)."
+            },
+            "timeoutMs": {
+                "type": "integer",
+                "description": "Command timeout in milliseconds. Higher priority than timeoutSec/execTimeoutSec.",
+                "minimum": 1
+            },
+            "headed": {
+                "type": "boolean",
+                "description": "Pass --headed to agent-browser to show the browser window.",
+                "default": false
             },
 
             "url": {
@@ -196,9 +211,7 @@ fn exec<'a>(
             .ok_or_else(|| "action is required".to_string())?
             .to_ascii_lowercase();
 
-        let timeout_secs = arg_u64_any(args, &["timeoutSec", "timeout"])
-            .unwrap_or(DEFAULT_TIMEOUT_SECS)
-            .clamp(MIN_TIMEOUT_SECS, MAX_TIMEOUT_SECS);
+        let timeout_secs = resolve_timeout_secs(args);
 
         let session = resolve_session_name(args);
         let browser_executable = resolve_browser_executable_path(config);
@@ -294,6 +307,72 @@ fn exec<'a>(
             if !p.success {
                 let err = p.error.as_deref().unwrap_or("unknown agent-browser error");
                 let (err_msg, _) = truncate_to_chars(err, MAX_RAW_CHARS);
+
+                if action == "open" {
+                    if let Some(target_url) = arg_str(args, "url") {
+                        let executable_for_recover = executable.clone();
+                        let session_for_recover = session.clone();
+                        let browser_exec_for_recover = browser_executable.clone();
+                        let target_url_for_recover = target_url.to_string();
+                        let recover_timeout = Duration::from_secs(timeout_secs.min(10));
+
+                        let recovered = async_runtime::spawn_blocking(move || {
+                            probe_open_recovery(
+                                &executable_for_recover,
+                                &session_for_recover,
+                                browser_exec_for_recover.as_deref(),
+                                &target_url_for_recover,
+                                recover_timeout,
+                            )
+                        })
+                        .await
+                        .ok()
+                        .and_then(Result::ok)
+                        .flatten();
+
+                        if let Some((recovered_url, recovered_title)) = recovered {
+                            if debug {
+                                println!(
+                                    "[tools][debug] agent-browser recovered open action with current_url={} title={}",
+                                    recovered_url,
+                                    recovered_title.as_deref().unwrap_or("")
+                                );
+                            }
+
+                            let data = serde_json::json!({
+                                "url": recovered_url,
+                                "title": recovered_title,
+                                "recovered": true,
+                                "originalError": err_msg,
+                            });
+                            let command_for_log = render_command_for_log(&cli_args);
+                            let content = serde_json::json!({
+                                "tool": "agent-browser",
+                                "ok": true,
+                                "action": action,
+                                "session": session,
+                                "timeoutSec": timeout_secs,
+                                "command": command_for_log,
+                                "browserExecutablePath": browser_executable,
+                                "exitCode": exec.exit_code,
+                                "durationMs": exec.duration_ms,
+                                "data": data,
+                                "raw": "",
+                                "stderr": "",
+                                "rawTruncated": false,
+                                "stderrTruncated": false,
+                                "recoveredFromOpenError": true,
+                            });
+
+                            return Ok(ToolExecResult {
+                                content,
+                                response_content: serde_json::to_string_pretty(&data)
+                                    .unwrap_or_else(|_| data.to_string()),
+                            });
+                        }
+                    }
+                }
+
                 if debug {
                     println!(
                         "[tools][debug] agent-browser return error action={} reason=tool_failed message={}",
@@ -330,10 +409,14 @@ fn exec<'a>(
             ));
         }
 
-        let data = parsed
+        let mut data = parsed
             .as_ref()
             .and_then(|p| p.data.clone())
             .unwrap_or(Value::Null);
+
+        if action == "screenshot" {
+            attach_share_server_url_for_screenshot(&mut data, debug);
+        }
 
         let (raw, raw_truncated) = truncate_to_chars(exec.stdout.trim(), MAX_RAW_CHARS);
         let (stderr, stderr_truncated) = truncate_to_chars(exec.stderr.trim(), MAX_RAW_CHARS);
@@ -357,6 +440,17 @@ fn exec<'a>(
         });
 
         let mut response_content = summarize_response_content(&action, &content["data"]);
+        if action == "screenshot" {
+            if let Some(url) = content["data"]
+                .get("screenshotUrl")
+                .and_then(|v| v.as_str())
+            {
+                response_content = format!(
+                    "Screenshot captured. Use this URL in markdown:\n\n![screenshot]({})",
+                    url
+                );
+            }
+        }
         if response_content.is_empty() {
             response_content = "ok".to_string();
         }
@@ -520,6 +614,133 @@ fn resolve_capture_dir() -> PathBuf {
     }
 
     std::env::temp_dir()
+}
+
+fn attach_share_server_url_for_screenshot(data: &mut Value, debug: bool) {
+    let Some(path) = data.get("path").and_then(|v| v.as_str()) else {
+        return;
+    };
+
+    let share_url = match share_server::save_local_file_as_asset(Path::new(path)) {
+        Ok(url) => url,
+        Err(err) => {
+            if debug {
+                println!(
+                    "[tools][debug] agent-browser screenshot share url create failed: {}",
+                    err
+                );
+            }
+            return;
+        }
+    };
+
+    if let Some(obj) = data.as_object_mut() {
+        obj.insert(
+            "screenshotUrl".to_string(),
+            Value::String(share_url.clone()),
+        );
+        obj.insert("rehostedByShareServer".to_string(), Value::Bool(true));
+    }
+
+    if debug {
+        println!(
+            "[tools][debug] agent-browser screenshot rehosted url={}",
+            share_url
+        );
+    }
+}
+
+fn probe_open_recovery(
+    executable: &str,
+    session: &str,
+    browser_executable: Option<&str>,
+    target_url: &str,
+    timeout: Duration,
+) -> Result<Option<(String, Option<String>)>, String> {
+    let mut url_args = vec![
+        "--json".to_string(),
+        "--session".to_string(),
+        session.to_string(),
+    ];
+    if let Some(path) = browser_executable.map(str::trim).filter(|s| !s.is_empty()) {
+        url_args.push("--executable-path".to_string());
+        url_args.push(path.to_string());
+    }
+    url_args.push("get".to_string());
+    url_args.push("url".to_string());
+
+    let url_exec = run_agent_browser(executable, url_args, timeout)?;
+    if url_exec.timed_out || url_exec.exit_code.unwrap_or(1) != 0 {
+        return Ok(None);
+    }
+    let url_parsed = match parse_agent_browser_json(&url_exec.stdout) {
+        Some(v) if v.success => v,
+        _ => return Ok(None),
+    };
+
+    let current_url = url_parsed
+        .data
+        .as_ref()
+        .and_then(|d| d.get("url"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let current_url = match current_url {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+
+    if !is_recovered_open_match(target_url, &current_url) {
+        return Ok(None);
+    }
+
+    let mut title_args = vec![
+        "--json".to_string(),
+        "--session".to_string(),
+        session.to_string(),
+    ];
+    if let Some(path) = browser_executable.map(str::trim).filter(|s| !s.is_empty()) {
+        title_args.push("--executable-path".to_string());
+        title_args.push(path.to_string());
+    }
+    title_args.push("get".to_string());
+    title_args.push("title".to_string());
+
+    let title = match run_agent_browser(executable, title_args, timeout) {
+        Ok(exec) if !exec.timed_out && exec.exit_code.unwrap_or(1) == 0 => {
+            parse_agent_browser_json(&exec.stdout)
+                .filter(|p| p.success)
+                .and_then(|p| p.data)
+                .and_then(|d| {
+                    d.get("title")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                })
+        }
+        _ => None,
+    };
+
+    Ok(Some((current_url, title)))
+}
+
+fn is_recovered_open_match(target_url: &str, current_url: &str) -> bool {
+    if current_url.eq_ignore_ascii_case("about:blank") {
+        return false;
+    }
+
+    let target = Url::parse(target_url);
+    let current = Url::parse(current_url);
+
+    if let (Ok(t), Ok(c)) = (target, current) {
+        if let (Some(th), Some(ch)) = (t.host_str(), c.host_str()) {
+            return th.eq_ignore_ascii_case(ch);
+        }
+    }
+
+    current_url
+        .to_ascii_lowercase()
+        .starts_with(&target_url.to_ascii_lowercase())
 }
 
 fn resolve_agent_browser_executable(config: &AppConfig) -> String {
@@ -717,6 +938,10 @@ fn build_cli_args(
     if let Some(path) = browser_executable.map(str::trim).filter(|s| !s.is_empty()) {
         out.push("--executable-path".to_string());
         out.push(path.to_string());
+    }
+
+    if arg_bool_any(args, &["headed", "browserHeaded"], false) {
+        out.push("--headed".to_string());
     }
 
     match action {
@@ -953,6 +1178,17 @@ fn arg_u64_any(args: &Value, keys: &[&str]) -> Option<u64> {
         }
         None
     })
+}
+
+fn resolve_timeout_secs(args: &Value) -> u64 {
+    if let Some(timeout_ms) = arg_u64_any(args, &["timeoutMs", "execTimeoutMs"]) {
+        let secs = timeout_ms.saturating_add(999) / 1000;
+        return secs.clamp(MIN_TIMEOUT_SECS, MAX_TIMEOUT_SECS);
+    }
+
+    arg_u64_any(args, &["timeoutSec", "execTimeoutSec", "timeout"])
+        .unwrap_or(DEFAULT_TIMEOUT_SECS)
+        .clamp(MIN_TIMEOUT_SECS, MAX_TIMEOUT_SECS)
 }
 
 fn summarize_response_content(action: &str, data: &Value) -> String {

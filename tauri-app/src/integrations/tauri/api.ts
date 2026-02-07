@@ -104,6 +104,10 @@ export async function getClipboardImage(): Promise<string | null> {
   return await invoke('get_clipboard_image');
 }
 
+export async function readLocalImageDataUrl(path: string): Promise<string | null> {
+  return await invoke('read_local_image_data_url', { path });
+}
+
 export async function translateText(
   text: string,
   fromLang: string,

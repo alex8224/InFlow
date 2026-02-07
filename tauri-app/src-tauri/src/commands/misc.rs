@@ -1,5 +1,6 @@
 use arboard::Clipboard;
 use base64::{engine::general_purpose, Engine as _};
+use std::path::PathBuf;
 use tauri::Manager;
 
 #[tauri::command]
@@ -93,4 +94,58 @@ pub fn get_clipboard_image() -> Result<Option<String>, String> {
             }
         }
     }
+}
+
+#[tauri::command]
+pub fn read_local_image_data_url(path: String) -> Result<Option<String>, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    let p = match resolve_local_image_path(trimmed) {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+
+    if !p.exists() || !p.is_file() {
+        return Ok(None);
+    }
+
+    let mime = match p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("bmp") => "image/bmp",
+        Some("svg") => "image/svg+xml",
+        _ => return Ok(None),
+    };
+
+    let data = std::fs::read(&p).map_err(|e| format!("读取图片失败: {}", e))?;
+    let b64 = general_purpose::STANDARD.encode(data);
+    Ok(Some(format!("data:{};base64,{}", mime, b64)))
+}
+
+fn resolve_local_image_path(input: &str) -> Option<PathBuf> {
+    let p = PathBuf::from(input);
+    if p.is_absolute() {
+        return Some(p);
+    }
+
+    let cwd = std::env::current_dir().ok()?;
+    let mut candidates: Vec<PathBuf> = vec![cwd.join(input)];
+    if let Some(parent) = cwd.parent() {
+        candidates.push(parent.join(input));
+    }
+    candidates.push(cwd.join("src-tauri").join(input));
+
+    candidates
+        .into_iter()
+        .find(|candidate| candidate.exists() && candidate.is_file())
 }

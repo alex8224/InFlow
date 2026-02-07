@@ -1,8 +1,11 @@
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tiny_http::{Header, Response, Server};
 
 /// Shared message structure for the share viewer
@@ -67,6 +70,113 @@ pub fn get_server_port() -> Option<u16> {
 /// Set the server port
 fn set_server_port(port: u16) {
     *SERVER_PORT.lock().unwrap() = Some(port);
+}
+
+fn resolve_assets_dir() -> PathBuf {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        candidates.push(
+            PathBuf::from(local)
+                .join("inFlow")
+                .join("share-server")
+                .join("assets"),
+        );
+    }
+
+    if let Ok(user) = std::env::var("USERPROFILE") {
+        candidates.push(
+            PathBuf::from(user)
+                .join("AppData")
+                .join("Local")
+                .join("inFlow")
+                .join("share-server")
+                .join("assets"),
+        );
+    }
+
+    candidates.push(
+        std::env::temp_dir()
+            .join("inFlow")
+            .join("share-server")
+            .join("assets"),
+    );
+
+    for dir in candidates {
+        if fs::create_dir_all(&dir).is_ok() {
+            return dir;
+        }
+    }
+
+    std::env::temp_dir()
+}
+
+fn ensure_server_port() -> u16 {
+    if let Some(port) = get_server_port() {
+        return port;
+    }
+
+    match start_server() {
+        Ok(port) => port,
+        Err(_) => get_server_port().unwrap_or(8765),
+    }
+}
+
+fn sanitize_asset_ext(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => "png",
+        Some("jpg") | Some("jpeg") => "jpg",
+        Some("gif") => "gif",
+        Some("webp") => "webp",
+        Some("bmp") => "bmp",
+        Some("svg") => "svg",
+        _ => "bin",
+    }
+}
+
+fn content_type_for_asset(name: &str) -> &'static str {
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".png") {
+        "image/png"
+    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        "image/jpeg"
+    } else if lower.ends_with(".gif") {
+        "image/gif"
+    } else if lower.ends_with(".webp") {
+        "image/webp"
+    } else if lower.ends_with(".bmp") {
+        "image/bmp"
+    } else if lower.ends_with(".svg") {
+        "image/svg+xml"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+pub fn save_local_file_as_asset(source_path: &Path) -> Result<String, String> {
+    if !source_path.exists() || !source_path.is_file() {
+        return Err("asset source file does not exist".to_string());
+    }
+
+    let ext = sanitize_asset_ext(source_path);
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let file_name = format!("shot-{}-{}.{}", std::process::id(), ts, ext);
+
+    let dir = resolve_assets_dir();
+    let target_path = dir.join(&file_name);
+    fs::copy(source_path, &target_path)
+        .map_err(|e| format!("failed to copy screenshot to share assets: {}", e))?;
+
+    let port = ensure_server_port();
+    Ok(format!("http://127.0.0.1:{}/assets/{}", port, file_name))
 }
 
 // HTML template for rendering shared sessions
@@ -605,6 +715,48 @@ fn handle_request(request: tiny_http::Request) {
             Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap(),
         );
         let _ = request.respond(response);
+    } else if url.starts_with("/assets/") {
+        let asset_name = url.strip_prefix("/assets/").unwrap_or("");
+        if asset_name.is_empty()
+            || asset_name.contains("..")
+            || asset_name.contains('/')
+            || asset_name.contains('\\')
+        {
+            let response = Response::from_string("Not Found").with_status_code(404);
+            let _ = request.respond(response);
+            return;
+        }
+
+        let path = resolve_assets_dir().join(asset_name);
+        if !path.exists() || !path.is_file() {
+            let response = Response::from_string("Not Found").with_status_code(404);
+            let _ = request.respond(response);
+            return;
+        }
+
+        match fs::read(&path) {
+            Ok(bytes) => {
+                let response = Response::from_data(bytes)
+                    .with_header(
+                        Header::from_bytes(
+                            &b"Content-Type"[..],
+                            content_type_for_asset(asset_name).as_bytes(),
+                        )
+                        .unwrap(),
+                    )
+                    .with_header(
+                        Header::from_bytes(&b"Cache-Control"[..], &b"no-store"[..]).unwrap(),
+                    )
+                    .with_header(
+                        Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap(),
+                    );
+                let _ = request.respond(response);
+            }
+            Err(_) => {
+                let response = Response::from_string("Not Found").with_status_code(404);
+                let _ = request.respond(response);
+            }
+        }
     } else {
         let response = Response::from_string("Not Found").with_status_code(404);
         let _ = request.respond(response);
