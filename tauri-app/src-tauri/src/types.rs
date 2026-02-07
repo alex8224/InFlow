@@ -28,7 +28,7 @@ pub struct InvocationContext {
     pub extra: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct InvocationUi {
     pub mode: Option<String>,
@@ -43,9 +43,22 @@ pub struct InvocationUi {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CapabilityRequestV2 {
+    pub request_version: Option<String>,
+    pub capability_id: String,
+    pub args: Option<serde_json::Value>,
+    pub context: Option<InvocationContext>,
+    pub ui: Option<InvocationUi>,
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Invocation {
     pub id: String,
     pub capability_id: String,
+    pub capability_version: Option<String>,
+    pub request_version: Option<String>,
     pub args: Option<serde_json::Value>,
     pub context: Option<InvocationContext>,
     pub source: String,

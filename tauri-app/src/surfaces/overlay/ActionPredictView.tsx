@@ -5,6 +5,7 @@ import { Send, Loader2 } from 'lucide-react';
 
 import { Button } from '../../components/ui/button';
 import { Textarea } from '../../components/ui/textarea';
+import { buildV2DeepLink } from '../../integrations/tauri/api';
 import { useInvocationStore } from '../../stores/invocationStore';
 import { cn } from '../../lib/cn';
 import './ActionPredictView.css';
@@ -70,10 +71,18 @@ export function ActionPredictView() {
   // 发送到 Chat Overlay
   const handleSend = useCallback(async (promptTemplate: string) => {
     const finalPrompt = promptTemplate.replace('{text}', inputText);
-
-    // 通过 deep link 打开 Chat Overlay
-    const encodedText = encodeURIComponent(finalPrompt);
-    const url = `inflow://invoke?capabilityId=chat.overlay&mode=chat&text=${encodedText}&autoSend=true`;
+    const url = buildV2DeepLink({
+      requestVersion: 'v2',
+      capabilityId: 'chat.overlay',
+      context: {
+        selectedText: finalPrompt,
+      },
+      ui: {
+        mode: 'chat',
+        autoSend: true,
+      },
+      source: 'internal',
+    });
 
     try {
       // 通过后端命令直接处理深度链接，绕过 opener 插件的权限限制

@@ -45,6 +45,73 @@ export type ChatPart =
   | { type: 'text'; content: string }
   | { type: 'image'; content: string }; // base64
 
+export interface CapabilityInvocationUi {
+  mode?: string;
+  instanceId?: string;
+  reuse?: string;
+  focus?: boolean;
+  position?: string;
+  autoClose?: boolean;
+  autoSend?: boolean;
+  targetLabel?: string;
+}
+
+export interface CapabilityRequestV2 {
+  requestVersion?: 'v2' | 'legacy';
+  capabilityId: string;
+  args?: Record<string, unknown>;
+  context?: Record<string, unknown>;
+  ui?: CapabilityInvocationUi;
+  source?: string;
+}
+
+export interface CapabilityCatalogItem {
+  id: string;
+  version: string;
+  name: string;
+  description: string;
+  viewId?: string | null;
+  uiPolicy: {
+    defaultMode: string;
+    allowedModes: string[];
+    defaultFocus: boolean;
+  };
+}
+
+export function buildV2DeepLink(
+  request: CapabilityRequestV2,
+): string {
+  const params = new URLSearchParams();
+  params.set('v', '2');
+  params.set('capability', request.capabilityId);
+  if (request.args && Object.keys(request.args).length > 0) {
+    params.set('args', JSON.stringify(request.args));
+  }
+  if (request.context && Object.keys(request.context).length > 0) {
+    params.set('context', JSON.stringify(request.context));
+  }
+  if (request.ui && Object.keys(request.ui).length > 0) {
+    params.set('ui', JSON.stringify(request.ui));
+  }
+  return `inflow://invoke?${params.toString()}`;
+}
+
+export function buildLegacyDeepLink(params: {
+  capabilityId: string;
+  mode?: string;
+  text?: string;
+  autoSend?: boolean;
+}): string {
+  const query = new URLSearchParams();
+  query.set('capabilityId', params.capabilityId);
+  if (params.mode) query.set('mode', params.mode);
+  if (params.text) query.set('text', params.text);
+  if (params.autoSend !== undefined) {
+    query.set('autoSend', String(params.autoSend));
+  }
+  return `inflow://invoke?${query.toString()}`;
+}
+
 export async function chatSessionCreate(): Promise<{ sessionId: string }> {
   return await invoke('chat_session_create');
 }
@@ -76,12 +143,23 @@ export async function executeCapability(
   context?: any,
   ui?: { mode?: string; focus?: boolean }
 ): Promise<void> {
-  await invoke('execute_capability', {
+  await executeCapabilityV2({
+    requestVersion: 'legacy',
     capabilityId,
     args,
     context,
     ui,
   });
+}
+
+export async function executeCapabilityV2(
+  request: CapabilityRequestV2,
+): Promise<void> {
+  await invoke('execute_capability_v2', { request });
+}
+
+export async function getCapabilityCatalog(): Promise<CapabilityCatalogItem[]> {
+  return await invoke('get_capability_catalog');
 }
 
 export async function showOverlay(): Promise<void> {

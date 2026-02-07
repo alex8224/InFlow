@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use tauri::Manager;
 
 mod commands;
+mod capability_catalog;
 mod config;
 mod deeplink;
 mod genai_client;
@@ -149,6 +150,8 @@ pub fn run() {
             chat::chat_tools_catalog,
             chat::chat_infer_title,
             capability::execute_capability,
+            capability::execute_capability_v2,
+            capability::get_capability_catalog,
             capability::get_current_invocation,
             misc::show_overlay,
             misc::close_overlay,

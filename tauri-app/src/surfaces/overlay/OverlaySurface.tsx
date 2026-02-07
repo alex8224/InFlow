@@ -28,6 +28,7 @@ import { cn } from "../../lib/cn";
 import { useInvocationStore } from "../../stores/invocationStore";
 import { useChatStore } from "../../stores/chatStore";
 import { viewRegistry } from "../../core/registry/viewRegistry";
+import { getCapabilityDefinition } from "../../core/capabilities";
 
 export function OverlaySurface() {
   const currentInvocation = useInvocationStore(
@@ -300,9 +301,13 @@ export function OverlaySurface() {
   };
 
   const capabilityId = currentInvocation?.capabilityId;
-  const isChat = capabilityId === "chat.overlay";
-  const isTranslate = capabilityId?.startsWith("translate.") ?? false;
-  const isActionPredict = capabilityId === "action.predict";
+  const capability = capabilityId
+    ? getCapabilityDefinition(capabilityId)
+    : undefined;
+  const capabilityViewId = capability?.viewId;
+  const isChat = capabilityViewId === "chat-overlay-view";
+  const isTranslate = capabilityViewId === "translate-view";
+  const isActionPredict = capabilityViewId === "action-predict-view";
 
   useEffect(() => {
     if (!isChat) return;

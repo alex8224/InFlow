@@ -13,6 +13,8 @@ export type InvocationContext = {
 export type Invocation = {
   id: string;
   capabilityId: string;
+  capabilityVersion?: string;
+  requestVersion?: 'legacy' | 'v2';
   args?: Record<string, unknown>;
   context?: InvocationContext;
   source: "context_menu" | "powertoys" | "hotkey" | "protocol" | "api" | "internal";

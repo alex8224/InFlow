@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { Invocation } from '../core/types';
 import { useInvocationStore } from '../stores/invocationStore';
 import { viewRegistry } from '../core/registry/viewRegistry';
+import { getCapabilityIdsByView } from '../core/capabilities';
 import { TranslateView } from '../surfaces/overlay/TranslateView';
 import { ChatOverlayView } from '../surfaces/overlay/ChatOverlayView';
 import { ActionPredictView } from '../surfaces/overlay/ActionPredictView';
@@ -51,7 +52,7 @@ export async function bootstrap() {
       id: 'translate-view',
       name: 'Translate',
       component: TranslateView,
-      capabilityIds: ['translate.selection', 'translate.text'],
+      capabilityIds: getCapabilityIdsByView('translate-view'),
     });
   }
 
@@ -60,7 +61,7 @@ export async function bootstrap() {
       id: 'settings-view',
       name: 'Settings',
       component: SettingsView,
-      capabilityIds: ['app.settings'],
+      capabilityIds: getCapabilityIdsByView('settings-view'),
     });
   }
 
@@ -69,7 +70,7 @@ export async function bootstrap() {
       id: 'chat-overlay-view',
       name: 'Chat',
       component: ChatOverlayView,
-      capabilityIds: ['chat.overlay'],
+      capabilityIds: getCapabilityIdsByView('chat-overlay-view'),
     });
   }
 
@@ -78,7 +79,7 @@ export async function bootstrap() {
       id: 'action-predict-view',
       name: 'Action Predict',
       component: ActionPredictView,
-      capabilityIds: ['action.predict'],
+      capabilityIds: getCapabilityIdsByView('action-predict-view'),
     });
   }
 
