@@ -62,7 +62,7 @@ fn build(provider: &LlmProvider) -> Tool {
                 "hover", "check", "uncheck", "select", "scroll", "scrollintoview",
                 "wait", "get", "tab", "screenshot", "back", "forward", "reload",
                 "close", "dialog", "frame", "drag", "console", "errors", "set",
-                "find", "mouse", "keydown", "keyup"
+                "find", "mouse", "keydown", "keyup", "eval", "is"
             ]
         }),
     );
@@ -132,6 +132,21 @@ fn build(provider: &LlmProvider) -> Tool {
         serde_json::json!({
             "type": "string",
             "description": "Keyboard key for press action, e.g. Enter, Tab, Control+a."
+        }),
+    );
+    properties.insert(
+        "code".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "Javascript code to execute for eval action."
+        }),
+    );
+    properties.insert(
+        "isState".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "description": "State to check for is action (checked, disabled, editable, enabled, hidden, visible).",
+            "enum": ["checked", "disabled", "editable", "enabled", "hidden", "visible"]
         }),
     );
 
@@ -1445,6 +1460,17 @@ fn build_cli_args(
             if let Some(val) = arg_str_any(args, &["findValue", "text", "value"]) {
                 out.push(val.to_string());
             }
+        }
+        "eval" => {
+            out.push("eval".to_string());
+            let code = arg_str(args, "code").ok_or_else(|| "eval requires code".to_string())?;
+            out.push(code.to_string());
+        }
+        "is" => {
+            out.push("is".to_string());
+            out.push(required_selector(args, "is")?.to_string());
+            let state = arg_str(args, "isState").ok_or_else(|| "is requires isState".to_string())?;
+            out.push(state.to_string());
         }
         "wait" => {
             out.push("wait".to_string());
