@@ -60,13 +60,23 @@ fn build(provider: &LlmProvider) -> Tool {
                     "open",
                     "snapshot",
                     "click",
+                    "dblclick",
                     "fill",
                     "type",
                     "press",
+                    "hover",
+                    "check",
+                    "uncheck",
+                    "select",
+                    "scroll",
+                    "scrollintoview",
                     "wait",
                     "get",
                     "tab",
                     "screenshot",
+                    "back",
+                    "forward",
+                    "reload",
                     "close"
                 ]
             },
@@ -104,11 +114,23 @@ fn build(provider: &LlmProvider) -> Tool {
             },
             "text": {
                 "type": "string",
-                "description": "Text value for fill/type, or wait text when waitMode=text."
+                "description": "Text value for fill/type/select, or wait text when waitMode=text."
             },
             "key": {
                 "type": "string",
                 "description": "Keyboard key for press action, e.g. Enter, Tab, Control+a."
+            },
+
+            "scrollDirection": {
+                "type": "string",
+                "description": "Direction for scroll action.",
+                "enum": ["up", "down", "left", "right"],
+                "default": "down"
+            },
+            "scrollAmount": {
+                "type": "integer",
+                "description": "Amount of pixels to scroll (optional).",
+                "minimum": 1
             },
 
             "snapshotInteractive": {
@@ -994,6 +1016,50 @@ fn build_cli_args(
             out.push("press".to_string());
             let key = arg_str(args, "key").ok_or_else(|| "press requires key".to_string())?;
             out.push(key.to_string());
+        }
+        "dblclick" => {
+            out.push("dblclick".to_string());
+            out.push(required_selector(args, "dblclick")?.to_string());
+        }
+        "hover" => {
+            out.push("hover".to_string());
+            out.push(required_selector(args, "hover")?.to_string());
+        }
+        "check" => {
+            out.push("check".to_string());
+            out.push(required_selector(args, "check")?.to_string());
+        }
+        "uncheck" => {
+            out.push("uncheck".to_string());
+            out.push(required_selector(args, "uncheck")?.to_string());
+        }
+        "select" => {
+            out.push("select".to_string());
+            out.push(required_selector(args, "select")?.to_string());
+            let val = arg_str_any(args, &["text", "value"])
+                .ok_or_else(|| "select requires text or value".to_string())?;
+            out.push(val.to_string());
+        }
+        "scroll" => {
+            out.push("scroll".to_string());
+            let dir = arg_str(args, "scrollDirection").unwrap_or("down");
+            out.push(dir.to_string());
+            if let Some(amt) = arg_u64_any(args, &["scrollAmount", "amount"]) {
+                out.push(amt.to_string());
+            }
+        }
+        "scrollintoview" => {
+            out.push("scrollintoview".to_string());
+            out.push(required_selector(args, "scrollintoview")?.to_string());
+        }
+        "back" => {
+            out.push("back".to_string());
+        }
+        "forward" => {
+            out.push("forward".to_string());
+        }
+        "reload" => {
+            out.push("reload".to_string());
         }
         "wait" => {
             out.push("wait".to_string());
