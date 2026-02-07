@@ -1,23 +1,23 @@
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tauri::Manager;
-use std::sync::atomic::Ordering;
 
-mod config;
-mod types;
-mod state;
-mod genai_client;
-mod mcp;
-mod llm_tools;
-mod windowing;
-mod deeplink;
 mod commands;
+mod config;
+mod deeplink;
+mod genai_client;
+mod llm_tools;
+mod mcp;
 mod share_server;
+mod state;
+mod types;
+mod windowing;
 
-use state::AppState;
 use commands::*;
 use deeplink::handle_deep_link;
+use state::AppState;
 use windowing::show_main_window;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

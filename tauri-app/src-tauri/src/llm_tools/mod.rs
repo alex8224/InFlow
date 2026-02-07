@@ -10,6 +10,8 @@ use crate::state::AppState;
 
 mod builtin;
 
+#[allow(unused_imports)]
+pub use builtin::agent_browser::TOOL_AGENT_BROWSER;
 pub use builtin::time::TOOL_GET_CURRENT_DATETIME;
 #[allow(unused_imports)]
 pub use builtin::webfetch::TOOL_WEBFETCH;
@@ -78,7 +80,11 @@ pub async fn build_genai_tools(
     if debug {
         let mut sel: Vec<String> = selected.iter().cloned().collect();
         sel.sort();
-        println!("[tools][debug] selected_count={} selected={}", sel.len(), sel.join(","));
+        println!(
+            "[tools][debug] selected_count={} selected={}",
+            sel.len(),
+            sel.join(",")
+        );
     }
 
     let mut out: Vec<Tool> = Vec::new();
@@ -143,6 +149,7 @@ pub async fn execute_tool_call(
     config: &AppConfig,
     state: &AppState,
     server_map: &BTreeMap<String, McpRemoteServer>,
+    chat_session_id: Option<&str>,
     fn_name: &str,
     fn_arguments: &serde_json::Value,
 ) -> Result<ToolExecResult, String> {
@@ -150,7 +157,35 @@ pub async fn execute_tool_call(
         return Err(format!("Tool not enabled: {}", fn_name));
     }
 
-    if let Some(fut) = builtin::exec_builtin_tool(fn_name, provider, config, state, fn_arguments) {
+    let builtin_args_owned: Option<serde_json::Value> = if fn_name == TOOL_AGENT_BROWSER {
+        let has_session = fn_arguments
+            .get("session")
+            .and_then(|v| v.as_str())
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false);
+        if has_session {
+            None
+        } else {
+            let mut map = fn_arguments
+                .as_object()
+                .cloned()
+                .unwrap_or_else(serde_json::Map::new);
+            if let Some(sid) = chat_session_id {
+                map.insert(
+                    "_chatSessionId".to_string(),
+                    serde_json::Value::String(sid.to_string()),
+                );
+            }
+            Some(serde_json::Value::Object(map))
+        }
+    } else {
+        None
+    };
+    let builtin_args_ref = builtin_args_owned.as_ref().unwrap_or(fn_arguments);
+
+    if let Some(fut) =
+        builtin::exec_builtin_tool(fn_name, provider, config, state, builtin_args_ref)
+    {
         return fut.await;
     }
 

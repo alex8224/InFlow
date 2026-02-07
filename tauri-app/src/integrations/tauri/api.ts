@@ -27,6 +27,8 @@ export interface AppConfig {
   translateSystemPrompt: string | null;
   preferredService: string;
   mcpRemoteServers?: McpRemoteServer[];
+  agentBrowserCliPath?: string | null;
+  agentBrowserExecutablePath?: string | null;
 }
 
 export type ToolCatalogItem = {

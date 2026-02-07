@@ -48,6 +48,14 @@ pub struct AppConfig {
     //   Example: "http://127.0.0.1:7890"
     pub webfetch_use_system_proxy: Option<bool>,
     pub webfetch_proxy: Option<String>,
+
+    // Optional path to agent-browser CLI executable.
+    // Example (Windows): "C:\\...\\agent-browser-win32-x64.exe"
+    pub agent_browser_cli_path: Option<String>,
+
+    // Optional browser executable path used by agent-browser (`--executable-path`).
+    // Example (Windows): "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+    pub agent_browser_executable_path: Option<String>,
 }
 
 impl AppConfig {
@@ -155,6 +163,8 @@ impl AppConfig {
             chat_system_prompt_path: None,
             webfetch_use_system_proxy: Some(true),
             webfetch_proxy: None,
+            agent_browser_cli_path: None,
+            agent_browser_executable_path: None,
         }
     }
 

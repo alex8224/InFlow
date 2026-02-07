@@ -9,6 +9,7 @@ use crate::state::AppState;
 
 use super::{ToolCatalogItem, ToolExecResult};
 
+pub mod agent_browser;
 pub mod time;
 pub mod webfetch;
 
@@ -29,6 +30,8 @@ fn builtin_registry() -> &'static HashMap<&'static str, BuiltinToolSpec> {
     static REGISTRY: OnceLock<HashMap<&'static str, BuiltinToolSpec>> = OnceLock::new();
     REGISTRY.get_or_init(|| {
         let mut m = HashMap::new();
+        let spec = agent_browser::spec();
+        m.insert(spec.fn_name, spec);
         let spec = time::spec();
         m.insert(spec.fn_name, spec);
         let spec = webfetch::spec();
@@ -55,7 +58,9 @@ pub fn builtin_catalog_items() -> Vec<ToolCatalogItem> {
 }
 
 pub fn build_builtin_tool(fn_name: &str, provider: &LlmProvider) -> Option<Tool> {
-    builtin_registry().get(fn_name).map(|spec| (spec.build)(provider))
+    builtin_registry()
+        .get(fn_name)
+        .map(|spec| (spec.build)(provider))
 }
 
 pub fn exec_builtin_tool<'a>(

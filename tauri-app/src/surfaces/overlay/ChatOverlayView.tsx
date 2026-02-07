@@ -223,6 +223,8 @@ export function ChatOverlayView() {
   }, []);
 
   useEffect(() => {
+    const getActiveSessionId = () => useChatStore.getState().sessionId;
+
     try {
       debugStreamRef.current =
         localStorage.getItem("inflow.debug.chatStream") === "1";
@@ -253,7 +255,8 @@ export function ChatOverlayView() {
     };
 
     const onToken = listen<ChatTokenEvent>("chat-token", (event) => {
-      if (!sessionId || event.payload.sessionId !== sessionId) return;
+      const activeSessionId = getActiveSessionId();
+      if (!activeSessionId || event.payload.sessionId !== activeSessionId) return;
       const msgId = activeAssistantMessageId.current;
       if (!msgId) return;
 
@@ -339,7 +342,8 @@ export function ChatOverlayView() {
     });
 
     const onToolCall = listen<ChatToolCallEvent>("chat-toolcall", (event) => {
-      if (!sessionId || event.payload.sessionId !== sessionId) return;
+      const activeSessionId = getActiveSessionId();
+      if (!activeSessionId || event.payload.sessionId !== activeSessionId) return;
 
       if (debugStreamRef.current) {
         const run = debugRunRef.current;
@@ -386,7 +390,8 @@ export function ChatOverlayView() {
     const onToolResult = listen<ChatToolResultEvent>(
       "chat-toolresult",
       (event) => {
-        if (!sessionId || event.payload.sessionId !== sessionId) return;
+        const activeSessionId = getActiveSessionId();
+        if (!activeSessionId || event.payload.sessionId !== activeSessionId) return;
 
         if (debugStreamRef.current && debugVerboseRef.current) {
           const run = debugRunRef.current;
@@ -404,7 +409,8 @@ export function ChatOverlayView() {
     );
 
     const onEnd = listen<ChatEndEvent>("chat-end", (event) => {
-      if (!sessionId || event.payload.sessionId !== sessionId) return;
+      const activeSessionId = getActiveSessionId();
+      if (!activeSessionId || event.payload.sessionId !== activeSessionId) return;
       setStreaming(false);
       activeAssistantMessageId.current = null;
       flushDebug(true);
@@ -431,7 +437,8 @@ export function ChatOverlayView() {
     });
 
     const onError = listen<ChatErrorEvent>("chat-error", (event) => {
-      if (!sessionId || event.payload.sessionId !== sessionId) return;
+      const activeSessionId = getActiveSessionId();
+      if (!activeSessionId || event.payload.sessionId !== activeSessionId) return;
       setStreaming(false);
       activeAssistantMessageId.current = null;
       flushDebug(true);
@@ -458,7 +465,7 @@ export function ChatOverlayView() {
       onEnd.then((f) => f());
       onError.then((f) => f());
     };
-  }, [sessionId]);
+  }, []);
 
   useEffect(() => {
     return () => {

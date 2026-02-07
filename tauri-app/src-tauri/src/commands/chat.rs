@@ -10,9 +10,9 @@ use genai::chat::{
     ChatMessage, ChatOptions, ChatRequest, ChatStreamEvent, ReasoningEffort, Tool, ToolCall,
     ToolResponse,
 };
-use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
@@ -574,6 +574,7 @@ pub async fn chat_stream(
                 &config,
                 &state,
                 &server_map,
+                Some(&session_id),
                 &tc.fn_name,
                 &effective_args,
             )

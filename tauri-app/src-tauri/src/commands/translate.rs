@@ -1,13 +1,13 @@
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-use tauri::{AppHandle, State, Emitter};
-use genai::chat::{ChatMessage, ChatRequest, ChatStreamEvent};
-use futures::StreamExt;
 use crate::config::AppConfig;
 use crate::genai_client::{build_genai_client, resolve_genai_model};
-use crate::types::TranslateResponse;
 use crate::state::AppState;
+use crate::types::TranslateResponse;
+use futures::StreamExt;
+use genai::chat::{ChatMessage, ChatRequest, ChatStreamEvent};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, State};
 
 #[tauri::command]
 pub async fn translate_text(
@@ -108,7 +108,9 @@ pub async fn translate_text_ai_stream(
         .or(config.translate_provider_id)
         .or(config.active_provider_id);
 
-    let provider = config.llm_providers.iter()
+    let provider = config
+        .llm_providers
+        .iter()
         .find(|p| Some(&p.id) == target_id.as_ref())
         .ok_or_else(|| "未找到激活的 AI 提供商".to_string())?;
 
@@ -133,14 +135,17 @@ pub async fn translate_text_ai_stream(
 
     let chat_req = ChatRequest::new(vec![
         ChatMessage::system(system_prompt),
-        ChatMessage::user(format!("Translate from {} to {}: {}", from_lang, to_lang, text)),
+        ChatMessage::user(format!(
+            "Translate from {} to {}: {}",
+            from_lang, to_lang, text
+        )),
     ]);
 
     let stream_res = match client.exec_chat_stream(&model, chat_req, None).await {
         Ok(res) => {
             println!("DEBUG: exec_chat_stream SUCCESS");
             res
-        },
+        }
         Err(e) => {
             println!("!!! AI DEBUG: exec_chat_stream FAILED !!!");
             println!("Error Detail: {:?}", e);
@@ -194,9 +199,14 @@ pub async fn translate_text_ai_stream(
 #[tauri::command]
 pub fn translate_cancel(state: State<'_, AppState>) -> Result<(), String> {
     let window_label = "overlay".to_string();
-    
+
     // Trigger notify
-    if let Some(notifier) = state.translate_cancel_notifiers.lock().unwrap().get(&window_label) {
+    if let Some(notifier) = state
+        .translate_cancel_notifiers
+        .lock()
+        .unwrap()
+        .get(&window_label)
+    {
         notifier.notify_waiters();
     }
 

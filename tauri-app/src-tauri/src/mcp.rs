@@ -42,7 +42,10 @@ fn redact_url(url: &str) -> String {
             None => (part, None),
         };
         let k_l = k.to_ascii_lowercase();
-        let redact = k_l.contains("apikey") || k_l.contains("api_key") || k_l.contains("token") || k_l.contains("key");
+        let redact = k_l.contains("apikey")
+            || k_l.contains("api_key")
+            || k_l.contains("token")
+            || k_l.contains("key");
         if redact {
             out_pairs.push(format!("{}=<redacted>", k));
         } else if let Some(v) = v {
@@ -57,7 +60,11 @@ fn redact_url(url: &str) -> String {
 
 fn redact_header_value(name: &str, value: &str) -> String {
     let n = name.to_ascii_lowercase();
-    let should = n == "authorization" || n.contains("api-key") || n.contains("api_key") || n.contains("apikey") || n.contains("token");
+    let should = n == "authorization"
+        || n.contains("api-key")
+        || n.contains("api_key")
+        || n.contains("apikey")
+        || n.contains("token");
     if should {
         "<redacted>".to_string()
     } else {
@@ -78,14 +85,19 @@ fn redact_json_secrets(v: &serde_json::Value) -> serde_json::Value {
                     || kl.ends_with("key")
                     || kl.contains("secret");
                 if is_secret {
-                    out.insert(k.clone(), serde_json::Value::String("<redacted>".to_string()));
+                    out.insert(
+                        k.clone(),
+                        serde_json::Value::String("<redacted>".to_string()),
+                    );
                 } else {
                     out.insert(k.clone(), redact_json_secrets(vv));
                 }
             }
             serde_json::Value::Object(out)
         }
-        serde_json::Value::Array(arr) => serde_json::Value::Array(arr.iter().map(redact_json_secrets).collect()),
+        serde_json::Value::Array(arr) => {
+            serde_json::Value::Array(arr.iter().map(redact_json_secrets).collect())
+        }
         _ => v.clone(),
     }
 }
@@ -155,14 +167,24 @@ pub async fn mcp_post_jsonrpc(
     if mcp_trace_enabled() {
         let url = redact_url(&server.url);
         let msg = redact_json_secrets(&message);
-        let msg_str = serde_json::to_string(&msg).unwrap_or_else(|_| "<unserializable>".to_string());
-        println!("[mcp][trace] http request url={} include_session_headers={} body={}", url, include_session_headers, truncate_for_log(&msg_str, 4000));
+        let msg_str =
+            serde_json::to_string(&msg).unwrap_or_else(|_| "<unserializable>".to_string());
+        println!(
+            "[mcp][trace] http request url={} include_session_headers={} body={}",
+            url,
+            include_session_headers,
+            truncate_for_log(&msg_str, 4000)
+        );
         if let Some(h) = server.headers.as_ref() {
             let mut keys: Vec<String> = h.keys().cloned().collect();
             keys.sort();
             for k in keys {
                 if let Some(v) = h.get(&k) {
-                    println!("[mcp][trace] http header {}={}", k, redact_header_value(&k, v));
+                    println!(
+                        "[mcp][trace] http header {}={}",
+                        k,
+                        redact_header_value(&k, v)
+                    );
                 }
             }
         }
@@ -198,16 +220,25 @@ pub async fn mcp_post_jsonrpc(
         }
     }
 
-    let resp = req.send().await.map_err(|e| format!("MCP 请求失败: {}", e))?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("MCP 请求失败: {}", e))?;
     let status = resp.status();
     let headers = resp.headers().clone();
-    let body = resp.text().await.map_err(|e| format!("MCP 响应读取失败: {}", e))?;
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("MCP 响应读取失败: {}", e))?;
     if mcp_trace_enabled() {
         let ct = headers
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .unwrap_or("<missing>");
-        println!("[mcp][trace] http response status={} content_type={}", status, ct);
+        println!(
+            "[mcp][trace] http response status={} content_type={}",
+            status, ct
+        );
         println!("[mcp][trace] http body={}", truncate_for_log(&body, 12000));
     }
     Ok((status, headers, body))
@@ -335,7 +366,10 @@ pub async fn mcp_send_notification(
     Err(format!("MCP HTTP 错误: {}", status))
 }
 
-pub async fn mcp_ensure_initialized(server: &McpRemoteServer, state: &AppState) -> Result<(), String> {
+pub async fn mcp_ensure_initialized(
+    server: &McpRemoteServer,
+    state: &AppState,
+) -> Result<(), String> {
     let now = chrono::Utc::now().timestamp();
     let needs_init = {
         let sessions = state.mcp_sessions.lock().unwrap();
@@ -470,7 +504,14 @@ pub async fn mcp_ensure_initialized(server: &McpRemoteServer, state: &AppState) 
     }
 
     // Per spec: client should send notifications/initialized after initialize.
-    mcp_send_notification(server, state, "notifications/initialized", serde_json::json!({}), true).await?;
+    mcp_send_notification(
+        server,
+        state,
+        "notifications/initialized",
+        serde_json::json!({}),
+        true,
+    )
+    .await?;
     Ok(())
 }
 
@@ -525,7 +566,10 @@ pub async fn mcp_rpc(
     attempt
 }
 
-pub async fn mcp_tools_list(server: &McpRemoteServer, state: &AppState) -> Result<Vec<McpToolMeta>, String> {
+pub async fn mcp_tools_list(
+    server: &McpRemoteServer,
+    state: &AppState,
+) -> Result<Vec<McpToolMeta>, String> {
     let res = mcp_rpc(server, state, "tools/list", serde_json::json!({})).await?;
     let tools = res
         .get("tools")
@@ -539,7 +583,10 @@ pub async fn mcp_tools_list(server: &McpRemoteServer, state: &AppState) -> Resul
             .and_then(|v| v.as_str())
             .ok_or_else(|| "MCP tool 缺少 name".to_string())?
             .to_string();
-        let description = t.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let description = t
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
         let input_schema = t.get("inputSchema").cloned();
         out.push(McpToolMeta {
             server_id: server.id.clone(),
@@ -561,7 +608,10 @@ pub async fn mcp_tools_list(server: &McpRemoteServer, state: &AppState) -> Resul
     Ok(out)
 }
 
-pub async fn get_cached_mcp_tools(config: &AppConfig, state: &AppState) -> Result<Vec<McpToolMeta>, String> {
+pub async fn get_cached_mcp_tools(
+    config: &AppConfig,
+    state: &AppState,
+) -> Result<Vec<McpToolMeta>, String> {
     let servers: Vec<McpRemoteServer> = config
         .mcp_remote_servers
         .iter()
@@ -608,10 +658,7 @@ pub async fn get_cached_mcp_tools(config: &AppConfig, state: &AppState) -> Resul
                     "[mcp][debug] tools cache {} server_id={} age_seconds={}",
                     if cache_hit.is_some() { "hit" } else { "miss" },
                     server.id,
-                    cache_hit
-                        .as_ref()
-                        .map(|c| now - c.fetched_at)
-                        .unwrap_or(-1)
+                    cache_hit.as_ref().map(|c| now - c.fetched_at).unwrap_or(-1)
                 );
             }
 
@@ -631,7 +678,10 @@ pub async fn get_cached_mcp_tools(config: &AppConfig, state: &AppState) -> Resul
                         fetched
                     }
                     Err(err) => {
-                        println!("[mcp] tools/list failed server_id={} url={}: {}", server.id, server.url, err);
+                        println!(
+                            "[mcp] tools/list failed server_id={} url={}: {}",
+                            server.id, server.url, err
+                        );
                         Vec::new()
                     }
                 }
