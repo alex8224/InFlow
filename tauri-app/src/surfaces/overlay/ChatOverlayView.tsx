@@ -13,6 +13,7 @@ import {
   Copy,
   Image as ImageIcon,
   MessageSquare,
+  RotateCcw,
   Send,
   X,
 } from "lucide-react";
@@ -26,7 +27,7 @@ import {
   chatStream,
   getClipboardText,
 } from "../../integrations/tauri/api";
-import { useChatStore } from "../../stores/chatStore";
+import { type ChatMessagePart, useChatStore } from "../../stores/chatStore";
 import { useInvocationStore } from "../../stores/invocationStore";
 import { RichMarkdown } from "../../components/blocks/RichMarkdown";
 
@@ -114,7 +115,6 @@ export function ChatOverlayView() {
     sessionProviderId,
     isStreaming,
     messages,
-    toolCalls,
     selectedTools,
     input,
     pendingImages,
@@ -132,6 +132,17 @@ export function ChatOverlayView() {
     sessionTitle,
     setSessionTitle,
   } = useChatStore();
+  const toolHintTimerRef = useRef<number | null>(null);
+  const [toolHint, setToolHint] = useState<{
+    message: string;
+    tone: "info" | "success" | "error";
+  } | null>(null);
+  const toolHintToneTextClasses: Record<"info" | "success" | "error", string> =
+    {
+      info: "text-muted-foreground/70",
+      success: "text-emerald-300",
+      error: "text-rose-300",
+    };
   const activeAssistantMessageId = useRef<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -171,6 +182,45 @@ export function ChatOverlayView() {
   const currentProviderId = useMemo(() => {
     return sessionProviderId ?? null;
   }, [sessionProviderId]);
+
+  const showToolHint = useCallback(
+    (message: string, tone: "info" | "success" | "error" = "info") => {
+      setToolHint({ message, tone });
+      if (toolHintTimerRef.current) {
+        window.clearTimeout(toolHintTimerRef.current);
+      }
+      toolHintTimerRef.current = window.setTimeout(() => {
+        setToolHint(null);
+        toolHintTimerRef.current = null;
+      }, 2800);
+    },
+    [],
+  );
+
+  const formatToolArguments = useCallback((args: unknown) => {
+    if (args == null) return "";
+    if (typeof args === "string") {
+      const s = args.trim();
+      if (!s) return "";
+      return s.length > 140 ? `${s.slice(0, 137)}...` : s;
+    }
+    try {
+      const json = JSON.stringify(args);
+      if (!json) return "";
+      return json.length > 140 ? `${json.slice(0, 137)}...` : json;
+    } catch {
+      const fallback = String(args);
+      return fallback.length > 140 ? `${fallback.slice(0, 137)}...` : fallback;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toolHintTimerRef.current) {
+        window.clearTimeout(toolHintTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -248,7 +298,9 @@ export function ChatOverlayView() {
         return out;
       };
 
-      const safeDelta = event.payload.delta ? filterLeak(event.payload.delta) : undefined;
+      const safeDelta = event.payload.delta
+        ? filterLeak(event.payload.delta)
+        : undefined;
       const reasoningDelta = event.payload.reasoningDelta;
 
       if (safeDelta || reasoningDelta) {
@@ -320,6 +372,15 @@ export function ChatOverlayView() {
         arguments: event.payload.arguments,
         status: event.payload.status,
       });
+      const argsText = formatToolArguments(event.payload.arguments);
+      const argsSuffix = argsText ? ` | 参数: ${argsText}` : "";
+      if (event.payload.status === "started") {
+        showToolHint(`${event.payload.name}${argsSuffix}`, "info");
+      } else if (event.payload.status === "done") {
+        showToolHint(`${event.payload.name} 完成${argsSuffix}`, "success");
+      } else if (event.payload.status === "error") {
+        showToolHint(`${event.payload.name} 失败${argsSuffix}`, "error");
+      }
     });
 
     const onToolResult = listen<ChatToolResultEvent>(
@@ -474,9 +535,24 @@ export function ChatOverlayView() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSend = async (overrideText?: string) => {
+  const handleSend = async (
+    override?:
+      | string
+      | {
+          text?: string;
+          images?: string[];
+          preserveComposer?: boolean;
+        },
+  ) => {
+    const overrideText = typeof override === "string" ? override : override?.text;
+    const overrideImages =
+      typeof override === "object" ? override.images : undefined;
+    const preserveComposer =
+      typeof override === "object" && Boolean(override?.preserveComposer);
+
     const text = (overrideText ?? input).trim();
-    if (!text && pendingImages.length === 0) return;
+    const images = overrideImages ?? pendingImages;
+    if (!text && images.length === 0) return;
 
     if (!currentProviderId) {
       const msgId = startAssistantMessage();
@@ -502,13 +578,15 @@ export function ChatOverlayView() {
 
     const parts: any[] = [];
     if (text) parts.push({ type: "markdown", content: text });
-    for (const img of pendingImages) {
+    for (const img of images) {
       parts.push({ type: "image", content: img });
     }
 
-    setInput("");
-    clearPendingImages();
-    setIsInputVisible(false);
+    if (!preserveComposer) {
+      setInput("");
+      clearPendingImages();
+      setIsInputVisible(false);
+    }
     appendUserMessage(parts as any);
     const assistantId = startAssistantMessage();
     activeAssistantMessageId.current = assistantId;
@@ -574,6 +652,22 @@ export function ChatOverlayView() {
       appendAssistantToken(msgId, `\n\n[error] ${err?.message || String(err)}`);
     }
   };
+
+  const handleResend = useCallback(
+    (parts: ChatMessagePart[]) => {
+      if (isStreaming) return;
+      const text = parts
+        .filter((p): p is { type: "markdown"; content: string } => p.type === "markdown")
+        .map((p) => p.content)
+        .join("\n\n")
+        .trim();
+      const images = parts
+        .filter((p): p is { type: "image"; content: string } => p.type === "image")
+        .map((p) => p.content);
+      void handleSend({ text, images, preserveComposer: true });
+    },
+    [isStreaming, handleSend],
+  );
 
   const handlePaste = async (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
@@ -652,16 +746,10 @@ export function ChatOverlayView() {
     });
   }, [input]);
 
-  const toolCallEntries = Object.values(toolCalls);
-
-  const runningTool = useMemo(() => {
-    return toolCallEntries.find((t) => t.status === "started");
-  }, [toolCallEntries]);
-
   const TypingIndicator = () => {
     return (
       <div className="flex items-center gap-2 text-[12px] text-muted-foreground select-none">
-        <div className="font-bold">{runningTool ? runningTool.name : "正在生成"}</div>
+        <div className="font-bold">正在生成</div>
         <div className="flex items-center gap-1">
           <span
             className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse"
@@ -710,14 +798,14 @@ export function ChatOverlayView() {
             className={cn(
               "select-text transition-all duration-200",
               m.role === "user"
-                ? "relative rounded-[1.6rem] border pl-4 pr-12 py-3 shadow-[0_18px_40px_-26px_rgba(0,0,0,0.75)] bg-gradient-to-br from-[#1b2140] to-[#0f1226] text-slate-50 border-white/10 ring-1 ring-white/5 selection:bg-white/20 selection:text-white"
+                ? "relative rounded-[1.6rem] border pl-4 pr-20 py-3 shadow-[0_18px_40px_-26px_rgba(0,0,0,0.75)] bg-gradient-to-br from-[#1b2140] to-[#0f1226] text-slate-50 border-white/10 ring-1 ring-white/5 selection:bg-white/20 selection:text-white"
                 : "flex-1",
             )}
           >
             {m.role === "user" ? (
               <div className="flex flex-col gap-3">
                 {(() => {
-                  const rawText = m.parts
+                  const text = m.parts
                     .filter(
                       (p): p is { type: "markdown"; content: string } =>
                         p.type === "markdown",
@@ -725,27 +813,41 @@ export function ChatOverlayView() {
                     .map((p) => p.content)
                     .join("\n\n")
                     .trim();
-                  const rawImages = m.parts
+                  const images = m.parts
                     .filter(
                       (p): p is { type: "image"; content: string } =>
                         p.type === "image",
                     )
-                    .map((p) => p.content)
-                    .join("\n")
-                    .trim();
-                  const raw = [rawText, rawImages]
+                    .map((p) => p.content);
+                  const rawImageText = images.join("\n").trim();
+                  const raw = [text, rawImageText]
                     .filter((s) => Boolean(s && s.trim()))
                     .join("\n\n")
                     .trim();
-                  if (!raw) return null;
+                  const canResend = Boolean(text || images.length > 0);
                   return (
-                    <FloatingCopyButton
-                      text={raw}
-                      title="复制"
-                      className="absolute right-2 top-2 h-8 w-8 rounded-xl border border-white/15 bg-black/20 backdrop-blur-sm shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-black/30 active:scale-90"
-                      iconClassName="text-white/85"
-                      copiedIconClassName="text-green-400"
-                    />
+                    <div className="absolute right-2 top-2 flex items-center gap-1.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all">
+                      <FloatingCopyButton
+                        text={raw}
+                        title="复制"
+                        className="h-8 w-8 rounded-xl border border-white/15 bg-black/20 backdrop-blur-sm shadow-sm flex items-center justify-center hover:bg-black/30 active:scale-90"
+                        iconClassName="text-white/85"
+                        copiedIconClassName="text-green-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleResend(m.parts)}
+                        disabled={!canResend || isStreaming || !currentProviderId}
+                        className={cn(
+                          "h-8 w-8 rounded-xl border border-white/15 bg-black/20 backdrop-blur-sm shadow-sm flex items-center justify-center transition-all hover:bg-black/30 active:scale-90",
+                          (!canResend || isStreaming || !currentProviderId) &&
+                            "opacity-50 cursor-not-allowed",
+                        )}
+                        title="重新发送"
+                      >
+                        <RotateCcw className="w-4 h-4 text-white/85" />
+                      </button>
+                    </div>
                   );
                 })()}
                 {m.parts.map((p, i) => (
@@ -776,14 +878,20 @@ export function ChatOverlayView() {
                       ? (m.parts.find((p) => p.type === "markdown") as any)
                           .content
                       : "";
-                  const thought = 
-                    m.parts.find((p) => p.type === "thought")?.type === "thought"
-                      ? (m.parts.find((p) => p.type === "thought") as any).content
+                  const thought =
+                    m.parts.find((p) => p.type === "thought")?.type ===
+                    "thought"
+                      ? (m.parts.find((p) => p.type === "thought") as any)
+                          .content
                       : "";
 
                   const isActive = activeAssistantMessageId.current === m.id;
                   // 只有当正文和思考内容都为空时，才显示“正在生成”
-                  const showTyping = isStreaming && isActive && raw.trim() === "" && thought.trim() === "";
+                  const showTyping =
+                    isStreaming &&
+                    isActive &&
+                    raw.trim() === "" &&
+                    thought.trim() === "";
                   return (
                     <>
                       <FloatingCopyButton
@@ -792,16 +900,21 @@ export function ChatOverlayView() {
                         hideWhenDisabled
                         className="absolute right-2 top-2 h-8 w-8 rounded-xl border border-border/60 bg-background/70 backdrop-blur-sm shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-muted active:scale-90"
                       />
-                      {showTyping ? (
+                      {showTyping && (
                         <div className="py-1">
                           <TypingIndicator />
                         </div>
-                      ) : (
+                      )}
+                      {!showTyping && (
                         <div className="flex flex-col gap-3 w-full max-w-full overflow-hidden">
                           {m.parts.map((p, i) => {
-                            if (p.type === 'thought') {
+                            if (p.type === "thought") {
                               return (
-                                <details key={i} className="group/thought w-full max-w-full overflow-hidden" open>
+                                <details
+                                  key={i}
+                                  className="group/thought w-full max-w-full overflow-hidden"
+                                  open
+                                >
                                   <summary className="text-[11px] font-bold text-muted-foreground/60 cursor-pointer list-none flex items-center gap-1.5 hover:text-muted-foreground transition-colors select-none [&::-webkit-details-marker]:hidden">
                                     <MessageSquare className="w-3 h-3" />
                                     <span>思考过程</span>
@@ -813,9 +926,12 @@ export function ChatOverlayView() {
                                 </details>
                               );
                             }
-                            if (p.type === 'markdown') {
+                            if (p.type === "markdown") {
                               return (
-                                <div key={i} className="w-full max-w-full overflow-hidden">
+                                <div
+                                  key={i}
+                                  className="w-full max-w-full overflow-hidden"
+                                >
                                   <RichMarkdown
                                     className="leading-relaxed selection:bg-primary/20 select-text"
                                     markdown={p.content}
@@ -836,11 +952,15 @@ export function ChatOverlayView() {
         </div>
       </div>
     ));
-  }, [
-    messages,
-    isStreaming,
-    runningTool,
-  ]);
+  }, [messages, isStreaming, currentProviderId, handleResend]);
+
+  const toolProgressText = useMemo(() => {
+    if (toolHint) return `...${toolHint.message}`;
+    if (isStreaming) return "正在生成...";
+    return "";
+  }, [isStreaming, toolHint]);
+
+  const toolProgressTone = toolHint?.tone ?? "info";
 
   const suggestions = [
     "用Python实现斐波拉契数列的计算",
@@ -885,11 +1005,35 @@ export function ChatOverlayView() {
         </div>
 
         <div className="shrink-0 flex flex-col gap-2 mx-4 mb-4 relative min-h-[56px] justify-end">
+          <div className="h-6 pointer-events-none flex items-center">
+            <div
+              className={cn(
+                "h-full inline-flex w-fit max-w-[260px] sm:max-w-[340px] rounded-lg border px-2.5 text-[11px] items-center gap-2 transition-opacity duration-200",
+                toolProgressText
+                  ? "opacity-100 bg-background/70 border-border/60"
+                  : "opacity-0 bg-transparent border-transparent",
+              )}
+            >
+              <span
+                className={cn(
+                  "truncate",
+                  toolHintToneTextClasses[toolProgressTone],
+                )}
+              >
+                {toolProgressText || "\u00a0"}
+              </span>
+            </div>
+          </div>
+
           {/* Wake Button */}
-          <div className={cn(
-            "absolute right-0 bottom-0 transition-all duration-300 transform origin-bottom-right",
-            !isInputVisible ? "scale-100 opacity-100" : "scale-0 opacity-0 pointer-events-none"
-          )}>
+          <div
+            className={cn(
+              "absolute right-0 bottom-0 transition-all duration-300 transform origin-bottom-right",
+              !isInputVisible
+                ? "scale-100 opacity-100"
+                : "scale-0 opacity-0 pointer-events-none",
+            )}
+          >
             <Button
               onClick={() => {
                 setIsInputVisible(true);
@@ -903,11 +1047,13 @@ export function ChatOverlayView() {
           </div>
 
           {/* Input Area */}
-          <div 
+          <div
             ref={inputAreaRef}
             className={cn(
               "flex flex-col gap-2 transition-all duration-300 transform origin-bottom-right",
-              isInputVisible ? "scale-100 opacity-100" : "scale-50 opacity-0 pointer-events-none absolute w-full"
+              isInputVisible
+                ? "scale-100 opacity-100"
+                : "scale-50 opacity-0 pointer-events-none absolute w-full",
             )}
           >
             {pendingImages.length > 0 && (
@@ -951,7 +1097,7 @@ export function ChatOverlayView() {
                     setInput(e.target.value);
                   }}
                   onPaste={handlePaste}
-                  placeholder="Message inFlow..."
+                  placeholder="输入问题，得到答案..."
                   className="min-h-[52px] max-h-[200px] resize-none bg-transparent border-none shadow-none focus-visible:ring-0 rounded-xl pl-4 pr-24 py-3 text-sm font-medium leading-relaxed select-text placeholder:text-muted-foreground/50"
                   onKeyDown={(e) => {
                     freezeAutoScrollWhileTyping();

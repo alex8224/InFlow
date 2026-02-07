@@ -1,16 +1,16 @@
-import { create } from 'zustand';
+import { create } from "zustand";
 
-export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
+export type ChatRole = "system" | "user" | "assistant" | "tool";
 
-export type ChatToolCallStatus = 'started' | 'done' | 'error';
+export type ChatToolCallStatus = "started" | "done" | "error";
 
 export type ChatMessagePart =
-  | { type: 'markdown'; content: string }
-  | { type: 'thought'; content: string }
-  | { type: 'image'; content: string }
-  | { type: 'toolCall'; callId: string }
-  | { type: 'toolResult'; callId: string }
-  | { type: 'error'; message: string };
+  | { type: "markdown"; content: string }
+  | { type: "thought"; content: string }
+  | { type: "image"; content: string }
+  | { type: "toolCall"; callId: string }
+  | { type: "toolResult"; callId: string }
+  | { type: "error"; message: string };
 
 export type ChatMessage = {
   id: string;
@@ -54,10 +54,19 @@ type ChatStore = {
 
   appendUserMessage: (parts: ChatMessagePart[]) => string;
   startAssistantMessage: () => string;
-  appendAssistantToken: (messageId: string, delta?: string, reasoningDelta?: string) => void;
+  appendAssistantToken: (
+    messageId: string,
+    delta?: string,
+    reasoningDelta?: string,
+  ) => void;
   setStreaming: (value: boolean) => void;
 
-  upsertToolCall: (call: { callId: string; name: string; arguments: unknown; status: ChatToolCallStatus }) => void;
+  upsertToolCall: (call: {
+    callId: string;
+    name: string;
+    arguments: unknown;
+    status: ChatToolCallStatus;
+  }) => void;
   setToolResult: (callId: string, result: unknown) => void;
   setToolError: (callId: string, message: string) => void;
 };
@@ -73,16 +82,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   isStreaming: false,
   messages: [],
   toolCalls: {},
-  selectedTools: ['inflow__get_current_datetime', 'inflow__webfetch'],
-  input: '',
+  selectedTools: [
+    "inflow__get_current_datetime",
+    "inflow__webfetch",
+    "mcp__exa__web_search_exa",
+  ],
+  input: "",
   pendingImages: [],
 
   setSession: (sessionId) => set({ sessionId }),
   setSessionTitle: (title) => set({ sessionTitle: title }),
   setSessionProviderId: (providerId) => set({ sessionProviderId: providerId }),
   setInput: (value) => set({ input: value }),
-  addPendingImage: (base64) => set({ pendingImages: [...get().pendingImages, base64] }),
-  removePendingImage: (index) => set({ pendingImages: get().pendingImages.filter((_, i) => i !== index) }),
+  addPendingImage: (base64) =>
+    set({ pendingImages: [...get().pendingImages, base64] }),
+  removePendingImage: (index) =>
+    set({ pendingImages: get().pendingImages.filter((_, i) => i !== index) }),
   clearPendingImages: () => set({ pendingImages: [] }),
 
   resetSession: () => {
@@ -93,7 +108,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       messages: [],
       toolCalls: {},
       selectedTools: [],
-      input: '',
+      input: "",
       pendingImages: [],
     });
   },
@@ -103,7 +118,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       isStreaming: false,
       messages: [],
       toolCalls: {},
-      input: '',
+      input: "",
       pendingImages: [],
     });
   },
@@ -118,15 +133,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   setSelectedTools: (tools) => {
-    const next = Array.from(new Set(tools.map((t) => t.trim()).filter(Boolean)));
+    const next = Array.from(
+      new Set(tools.map((t) => t.trim()).filter(Boolean)),
+    );
     set({ selectedTools: next });
   },
 
   appendUserMessage: (parts) => {
-    const id = makeId('msg_user');
+    const id = makeId("msg_user");
     const msg: ChatMessage = {
       id,
-      role: 'user',
+      role: "user",
       parts,
       createdAt: Date.now(),
     };
@@ -135,11 +152,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   startAssistantMessage: () => {
-    const id = makeId('msg_assistant');
+    const id = makeId("msg_assistant");
     const msg: ChatMessage = {
       id,
-      role: 'assistant',
-      parts: [{ type: 'markdown', content: '' }],
+      role: "assistant",
+      parts: [{ type: "markdown", content: "" }],
       createdAt: Date.now(),
     };
     set({ messages: [...get().messages, msg] });
@@ -153,27 +170,27 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         let parts = [...m.parts];
 
         if (reasoningDelta) {
-          const thoughtIdx = parts.findIndex((p) => p.type === 'thought');
+          const thoughtIdx = parts.findIndex((p) => p.type === "thought");
           if (thoughtIdx > -1) {
             const p = parts[thoughtIdx];
-            if (p.type === 'thought') {
+            if (p.type === "thought") {
               parts[thoughtIdx] = { ...p, content: p.content + reasoningDelta };
             }
           } else {
             // Insert thought at the beginning or before markdown
-            parts.unshift({ type: 'thought', content: reasoningDelta });
+            parts.unshift({ type: "thought", content: reasoningDelta });
           }
         }
 
         if (delta) {
-          const markdownIdx = parts.findIndex((p) => p.type === 'markdown');
+          const markdownIdx = parts.findIndex((p) => p.type === "markdown");
           if (markdownIdx > -1) {
             const p = parts[markdownIdx];
-            if (p.type === 'markdown') {
+            if (p.type === "markdown") {
               parts[markdownIdx] = { ...p, content: p.content + delta };
             }
           } else {
-            parts.push({ type: 'markdown', content: delta });
+            parts.push({ type: "markdown", content: delta });
           }
         }
 
@@ -207,7 +224,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({
       toolCalls: {
         ...get().toolCalls,
-        [callId]: { ...existing, status: 'done', result },
+        [callId]: { ...existing, status: "done", result },
       },
     });
   },
@@ -218,7 +235,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({
       toolCalls: {
         ...get().toolCalls,
-        [callId]: { ...existing, status: 'error', error: message },
+        [callId]: { ...existing, status: "error", error: message },
       },
     });
   },

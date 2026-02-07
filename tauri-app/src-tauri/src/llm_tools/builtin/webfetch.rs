@@ -4,8 +4,8 @@ use std::time::Duration;
 use futures::future::BoxFuture;
 use futures::StreamExt;
 use genai::chat::Tool;
-use reqwest::header::{HeaderMap, HeaderValue};
 use html2md_rs::to_md::safe_from_html_to_md;
+use reqwest::header::{HeaderMap, HeaderValue};
 use url::Url;
 
 use crate::config::{AppConfig, LlmProvider};
@@ -75,7 +75,9 @@ fn build_webfetch_client(proxy_url: Option<&str>) -> Result<reqwest::Client, Str
         builder = builder.proxy(proxy);
     }
 
-    builder.build().map_err(|e| format!("failed to build webfetch http client: {}", e))
+    builder
+        .build()
+        .map_err(|e| format!("failed to build webfetch http client: {}", e))
 }
 
 fn normalize_proxy_url(raw: &str) -> Option<String> {
@@ -103,7 +105,10 @@ fn normalize_proxy_url(raw: &str) -> Option<String> {
         // Handle PAC tokens like "PROXY host:port" / "HTTPS host:port" / "HTTP host:port".
         if let Some((kw, rest)) = p.split_once(' ') {
             let kw_u = kw.trim().to_ascii_uppercase();
-            if matches!(kw_u.as_str(), "PROXY" | "HTTP" | "HTTPS" | "SOCKS" | "SOCKS5") {
+            if matches!(
+                kw_u.as_str(),
+                "PROXY" | "HTTP" | "HTTPS" | "SOCKS" | "SOCKS5"
+            ) {
                 p = rest.trim();
             }
         }
@@ -142,7 +147,11 @@ fn redact_proxy_url(raw: &str) -> String {
 
 fn resolve_proxy_for_url(config: &AppConfig, target_url: &Url) -> Option<String> {
     // Explicit proxy wins.
-    if let Some(p) = config.webfetch_proxy.as_ref().and_then(|s| normalize_proxy_url(s)) {
+    if let Some(p) = config
+        .webfetch_proxy
+        .as_ref()
+        .and_then(|s| normalize_proxy_url(s))
+    {
         return Some(p);
     }
 
@@ -153,7 +162,9 @@ fn resolve_proxy_for_url(config: &AppConfig, target_url: &Url) -> Option<String>
     }
 
     match proxy_cfg::get_proxy_config() {
-        Ok(Some(cfg)) => cfg.get_proxy_for_url(target_url).and_then(|s| normalize_proxy_url(&s)),
+        Ok(Some(cfg)) => cfg
+            .get_proxy_for_url(target_url)
+            .and_then(|s| normalize_proxy_url(&s)),
         _ => None,
     }
 }
@@ -185,8 +196,14 @@ fn build_headers(fmt: WebFetchFormat) -> HeaderMap {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
         ),
     );
-    h.insert(reqwest::header::ACCEPT, header_value(accept_header_for_format(fmt)));
-    h.insert(reqwest::header::ACCEPT_LANGUAGE, header_value("en-US,en;q=0.9"));
+    h.insert(
+        reqwest::header::ACCEPT,
+        header_value(accept_header_for_format(fmt)),
+    );
+    h.insert(
+        reqwest::header::ACCEPT_LANGUAGE,
+        header_value("en-US,en;q=0.9"),
+    );
     h
 }
 
@@ -296,11 +313,9 @@ fn exec<'a>(
             .min(MAX_MAX_CHARS)
             .max(MIN_MAX_CHARS);
 
-        // Parse optional range parameters
         let range_start = args.get("rangeStart").and_then(|v| v.as_u64());
         let range_end = args.get("rangeEnd").and_then(|v| v.as_u64());
 
-        // Build Range header value if range parameters are provided
         let range_header: Option<String> = match (range_start, range_end) {
             (Some(start), Some(end)) => {
                 if start > end {
@@ -321,13 +336,8 @@ fn exec<'a>(
             webfetch_http_client().clone()
         };
         let mut headers = build_headers(fmt);
-
-        // Add Range header if specified
         if let Some(ref range_val) = range_header {
-            headers.insert(
-                reqwest::header::RANGE,
-                header_value(range_val),
-            );
+            headers.insert(reqwest::header::RANGE, header_value(range_val));
         }
 
         let resp = client
@@ -357,8 +367,8 @@ fn exec<'a>(
             }
         }
 
-        let mut buf: Vec<u8> = Vec::new();
         let mut stream = resp.bytes_stream();
+        let mut buf: Vec<u8> = Vec::new();
         while let Some(item) = stream.next().await {
             let chunk = item.map_err(|e| format!("Response read failed: {}", e))?;
             if buf.len().saturating_add(chunk.len()) > MAX_RESPONSE_SIZE {
