@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
   Bot,
   Check,
@@ -35,9 +36,11 @@ import {
   chatToolsCatalog,
   getAppConfig,
   getClipboardText,
+  readLocalFileDataUrl,
   type AppConfig,
   type ToolCatalogItem,
 } from "../../integrations/tauri/api";
+
 import { type ChatMessagePart, useChatStore } from "../../stores/chatStore";
 import { useInvocationStore } from "../../stores/invocationStore";
 import { RichMarkdown } from "../../components/blocks/RichMarkdown";
@@ -184,6 +187,7 @@ export function ChatOverlayView() {
     null,
   );
   const [isInputVisible, setIsInputVisible] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
 
   const [config, setConfig] = useState<AppConfig | null>(null);
   const modelButtonRef = useRef<HTMLButtonElement>(null);
@@ -1382,6 +1386,74 @@ export function ChatOverlayView() {
     [isStreaming],
   );
 
+  const isInputVisibleRef = useRef(isInputVisible);
+  useEffect(() => {
+    isInputVisibleRef.current = isInputVisible;
+  }, [isInputVisible]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+
+    const setup = async () => {
+      const win = getCurrentWebviewWindow();
+      const unsubscribe = await win.onDragDropEvent((event) => {
+        const payload = event.payload;
+
+        if (payload.type === "enter") {
+          if (payload.paths && payload.paths.length > 0) {
+            setIsDragging(true);
+          }
+        } else if (payload.type === "drop") {
+          setIsDragging(false);
+          
+          if (payload.paths && payload.paths.length > 0) {
+            void (async () => {
+              for (const path of payload.paths) {
+                try {
+                  const dataUrl = await readLocalFileDataUrl(path);
+                  if (!dataUrl) continue;
+
+                  const mimeMatch = dataUrl.match(/^data:([^;]+);base64,/);
+                  const mime = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+                  const base64Data = dataUrl.split(",")[1];
+
+                  if (mime.startsWith("image/")) {
+                    addPendingImage(dataUrl);
+                  } else {
+                    addPendingFile(mime, base64Data);
+                  }
+                } catch (err) {
+                  console.error("Failed to process dropped file:", err);
+                }
+              }
+
+              if (!isInputVisibleRef.current) {
+                setIsInputVisible(true);
+                setTimeout(() => inputRef.current?.focus(), 100);
+              }
+            })();
+          }
+        } else if (payload.type === "leave") {
+          setIsDragging(false);
+        }
+      });
+
+      if (cancelled) {
+        unsubscribe();
+      } else {
+        unlisten = unsubscribe;
+      }
+    };
+
+    setup();
+
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
+  }, [addPendingFile, addPendingImage]);
+
   const handlePaste = async (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
     for (const item of items) {
@@ -1728,7 +1800,20 @@ export function ChatOverlayView() {
   ];
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 animate-in fade-in duration-200">
+    <div className="flex-1 flex flex-col min-h-0 animate-in fade-in duration-200 relative">
+      {isDragging && (
+        <div className="fixed inset-0 z-[9999] bg-primary/10 backdrop-blur-[2px] border-2 border-dashed border-primary/40 rounded-3xl m-2 flex flex-col items-center justify-center pointer-events-none animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-background/80 p-6 rounded-2xl shadow-xl flex flex-col items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+              <ImageIcon className="w-6 h-6" />
+            </div>
+            <div className="text-sm font-bold">释放文件以添加到聊天</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-black">
+              支持图片、PDF、音频、视频
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex-1 min-h-0 flex flex-col gap-3">
         <div
           ref={listRef}
