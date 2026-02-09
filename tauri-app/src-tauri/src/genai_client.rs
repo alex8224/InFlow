@@ -103,17 +103,32 @@ pub fn sanitize_tool_schema_for_provider(
     schema: &serde_json::Value,
 ) -> serde_json::Value {
     // Several LLM tool/function APIs reject JSON Schema meta fields like `$schema`.
-    // Gemini is strict and will 400 on unknown fields.
+    // Gemini is extremely strict and will 400 on unknown fields like "const" or "default" (sometimes).
     let mut cleaned = json_schema_strip_keys(schema, &["$schema", "$id"]);
 
-    // If the schema contains `$ref`, many hosted tool APIs (Gemini included) do not support it.
-    // Rather than hard-fail the whole chat request, degrade to a permissive object schema.
     let kind = provider.kind.to_lowercase();
-    if kind == "gemini" && json_value_contains_key(&cleaned, "$ref") {
-        println!(
-            "[mcp][schema] provider=gemini tool schema contains $ref; falling back to permissive object schema"
+    if kind == "gemini" {
+        // Gemini explicitly rejects "const" and sometimes "default".
+        // It also doesn't like meta-fields like "markdownDescription" or "example" in properties.
+        cleaned = json_schema_strip_keys(
+            &cleaned,
+            &[
+                "const",
+                "default",
+                "markdownDescription",
+                "example",
+                "examples",
+            ],
         );
-        cleaned = serde_json::json!({ "type": "object", "additionalProperties": true });
+
+        // If the schema contains `$ref`, many hosted tool APIs (Gemini included) do not support it.
+        // Rather than hard-fail the whole chat request, degrade to a permissive object schema.
+        if json_value_contains_key(&cleaned, "$ref") {
+            println!(
+                "[mcp][schema] provider=gemini tool schema contains $ref; falling back to permissive object schema"
+            );
+            cleaned = serde_json::json!({ "type": "object", "additionalProperties": true });
+        }
     }
 
     cleaned

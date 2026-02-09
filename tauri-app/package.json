@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri dev",
+    "dist": "npm exec tauri -- build --no-bundle"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.8",

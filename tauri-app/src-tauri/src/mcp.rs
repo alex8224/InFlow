@@ -1,525 +1,65 @@
-use reqwest::header::HeaderMap;
-use std::sync::OnceLock;
 use std::time::Duration;
 
+use rmcp::model::*;
+use rmcp::transport::StreamableHttpClientTransport;
+use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
+use rmcp::{Peer, RoleClient, ServiceExt};
+
 use crate::config::{AppConfig, McpRemoteServer};
-use crate::state::{AppState, CachedMcpTools, McpServerSession, McpToolMeta};
-
-pub fn mcp_accept_header_value() -> &'static str {
-    // Streamable HTTP transport requires declaring support for both.
-    // https://modelcontextprotocol.io/specification/2025-06-18/basic/transports
-    "application/json, text/event-stream"
-}
-
-pub fn mcp_default_protocol_version() -> &'static str {
-    "2025-06-18"
-}
+use crate::state::{AppState, CachedMcpTools, McpToolMeta};
 
 fn mcp_debug_enabled() -> bool {
     std::env::var("INFLOW_DEBUG_MCP").ok().as_deref() == Some("1")
 }
 
-fn mcp_trace_enabled() -> bool {
-    mcp_debug_enabled() || std::env::var("INFLOW_TRACE_MCP").ok().as_deref() == Some("1")
-}
-
-fn redact_url(url: &str) -> String {
-    let (base, qs) = match url.split_once('?') {
-        Some((b, q)) => (b, Some(q)),
-        None => (url, None),
-    };
-    let Some(qs) = qs else {
-        return base.to_string();
-    };
-
-    let mut out_pairs: Vec<String> = Vec::new();
-    for part in qs.split('&') {
-        if part.is_empty() {
-            continue;
-        }
-        let (k, v) = match part.split_once('=') {
-            Some((k, v)) => (k, Some(v)),
-            None => (part, None),
-        };
-        let k_l = k.to_ascii_lowercase();
-        let redact = k_l.contains("apikey")
-            || k_l.contains("api_key")
-            || k_l.contains("token")
-            || k_l.contains("key");
-        if redact {
-            out_pairs.push(format!("{}=<redacted>", k));
-        } else if let Some(v) = v {
-            out_pairs.push(format!("{}={}", k, v));
-        } else {
-            out_pairs.push(k.to_string());
-        }
-    }
-
-    format!("{}?{}", base, out_pairs.join("&"))
-}
-
-fn redact_header_value(name: &str, value: &str) -> String {
-    let n = name.to_ascii_lowercase();
-    let should = n == "authorization"
-        || n.contains("api-key")
-        || n.contains("api_key")
-        || n.contains("apikey")
-        || n.contains("token");
-    if should {
-        "<redacted>".to_string()
-    } else {
-        value.to_string()
-    }
-}
-
-fn redact_json_secrets(v: &serde_json::Value) -> serde_json::Value {
-    match v {
-        serde_json::Value::Object(map) => {
-            let mut out = serde_json::Map::new();
-            for (k, vv) in map {
-                let kl = k.to_ascii_lowercase();
-                let is_secret = kl == "authorization"
-                    || kl.contains("api_key")
-                    || kl.contains("apikey")
-                    || kl.contains("token")
-                    || kl.ends_with("key")
-                    || kl.contains("secret");
-                if is_secret {
-                    out.insert(
-                        k.clone(),
-                        serde_json::Value::String("<redacted>".to_string()),
-                    );
-                } else {
-                    out.insert(k.clone(), redact_json_secrets(vv));
-                }
-            }
-            serde_json::Value::Object(out)
-        }
-        serde_json::Value::Array(arr) => {
-            serde_json::Value::Array(arr.iter().map(redact_json_secrets).collect())
-        }
-        _ => v.clone(),
-    }
-}
-
-fn truncate_for_log(s: &str, max_chars: usize) -> String {
-    if s.chars().count() <= max_chars {
-        return s.to_string();
-    }
-    let mut out = String::new();
-    for (i, ch) in s.chars().enumerate() {
-        if i >= max_chars {
-            break;
-        }
-        out.push(ch);
-    }
-    out.push_str("…<truncated>");
-    out
-}
-
-fn mcp_http_client() -> &'static reqwest::Client {
-    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            // MCP servers are remote; fail fast rather than hanging the UI.
-            .connect_timeout(Duration::from_secs(8))
-            .timeout(Duration::from_secs(20))
-            .pool_idle_timeout(Duration::from_secs(90))
-            .build()
-            .expect("failed to build reqwest client")
-    })
-}
-
-pub fn parse_sse_data_events(body: &str) -> Vec<String> {
-    // Minimal SSE parser: collect `data:` payload per event.
-    // We ignore `event:` type and other fields; MCP servers typically send JSON-RPC messages in `data:`.
-    let mut out: Vec<String> = Vec::new();
-    let mut cur_data: Vec<String> = Vec::new();
-
-    for raw_line in body.lines() {
-        let line = raw_line.trim_end_matches(['\r', '\n']);
-        if line.is_empty() {
-            if !cur_data.is_empty() {
-                out.push(cur_data.join("\n"));
-                cur_data.clear();
-            }
-            continue;
-        }
-        if let Some(rest) = line.strip_prefix("data:") {
-            cur_data.push(rest.trim_start().to_string());
-        }
-    }
-
-    if !cur_data.is_empty() {
-        out.push(cur_data.join("\n"));
-    }
-
-    out
-}
-
-pub async fn mcp_post_jsonrpc(
+pub async fn get_or_create_mcp_service(
     server: &McpRemoteServer,
-    state: Option<&AppState>,
-    message: serde_json::Value,
-    include_session_headers: bool,
-) -> Result<(reqwest::StatusCode, HeaderMap, String), String> {
-    let client = mcp_http_client();
-    if mcp_trace_enabled() {
-        let url = redact_url(&server.url);
-        let msg = redact_json_secrets(&message);
-        let msg_str =
-            serde_json::to_string(&msg).unwrap_or_else(|_| "<unserializable>".to_string());
-        println!(
-            "[mcp][trace] http request url={} include_session_headers={} body={}",
-            url,
-            include_session_headers,
-            truncate_for_log(&msg_str, 4000)
-        );
-        if let Some(h) = server.headers.as_ref() {
-            let mut keys: Vec<String> = h.keys().cloned().collect();
-            keys.sort();
-            for k in keys {
-                if let Some(v) = h.get(&k) {
-                    println!(
-                        "[mcp][trace] http header {}={}",
-                        k,
-                        redact_header_value(&k, v)
-                    );
-                }
-            }
+    state: &AppState,
+) -> Result<Peer<RoleClient>, String> {
+    {
+        let services = state.mcp_services.lock().unwrap();
+        if let Some(service) = services.get(&server.id) {
+            return Ok(service.peer().clone());
         }
     }
-    let mut req = client
-        .post(&server.url)
-        .header(reqwest::header::ACCEPT, mcp_accept_header_value())
-        .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .json(&message);
 
-    if let Some(headers) = server.headers.as_ref() {
+    if mcp_debug_enabled() {
+        println!("[mcp][debug] creating new service for {}", server.id);
+    }
+
+    let mut default_headers = reqwest::header::HeaderMap::new();
+    if let Some(headers) = &server.headers {
         for (k, v) in headers {
-            req = req.header(k, v);
-        }
-    }
-
-    if include_session_headers {
-        if let Some(st) = state {
-            if let Some(sess) = st.mcp_sessions.lock().unwrap().get(&server.id).cloned() {
-                if sess.initialized {
-                    req = req.header("MCP-Protocol-Version", sess.protocol_version);
-                    if let Some(sid) = sess.session_id.as_ref() {
-                        req = req.header("Mcp-Session-Id", sid);
-                    }
-                } else {
-                    req = req.header("MCP-Protocol-Version", mcp_default_protocol_version());
-                }
-            } else {
-                req = req.header("MCP-Protocol-Version", mcp_default_protocol_version());
-            }
-        } else {
-            req = req.header("MCP-Protocol-Version", mcp_default_protocol_version());
-        }
-    }
-
-    let resp = req
-        .send()
-        .await
-        .map_err(|e| format!("MCP 请求失败: {}", e))?;
-    let status = resp.status();
-    let headers = resp.headers().clone();
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| format!("MCP 响应读取失败: {}", e))?;
-    if mcp_trace_enabled() {
-        let ct = headers
-            .get(reqwest::header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("<missing>");
-        println!(
-            "[mcp][trace] http response status={} content_type={}",
-            status, ct
-        );
-        println!("[mcp][trace] http body={}", truncate_for_log(&body, 12000));
-    }
-    Ok((status, headers, body))
-}
-
-pub async fn mcp_call_request(
-    server: &McpRemoteServer,
-    state: &AppState,
-    method: &str,
-    params: serde_json::Value,
-    include_session_headers: bool,
-) -> Result<serde_json::Value, String> {
-    let rpc_id = uuid::Uuid::new_v4().to_string();
-    let message = serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": rpc_id,
-        "method": method,
-        "params": params,
-    });
-
-    let (status, headers, body) =
-        mcp_post_jsonrpc(server, Some(state), message, include_session_headers).await?;
-
-    // Some servers may return 404 for expired session; caller may retry after re-init.
-    if !status.is_success() {
-        return Err(format!("MCP HTTP 错误: {}", status));
-    }
-
-    // Try JSON first (some servers reply with application/json).
-    let content_type = headers
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_lowercase();
-
-    if content_type.contains("application/json") {
-        let json: serde_json::Value =
-            serde_json::from_str(&body).map_err(|e| format!("MCP 响应解析失败: {}", e))?;
-        if let Some(err) = json.get("error") {
-            return Err(format!("MCP RPC 错误: {}", err));
-        }
-        return json
-            .get("result")
-            .cloned()
-            .ok_or_else(|| "MCP 响应缺少 result".to_string());
-    }
-
-    // Streamable HTTP servers often respond with text/event-stream.
-    if content_type.contains("text/event-stream") {
-        let events = parse_sse_data_events(&body);
-        let mut parsed: Vec<serde_json::Value> = Vec::new();
-        for data in events {
-            let msg: serde_json::Value = match serde_json::from_str(&data) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            parsed.push(msg.clone());
-            let id_match = msg
-                .get("id")
-                .and_then(|v| v.as_str())
-                .map(|s| s == rpc_id)
-                .unwrap_or(false);
-            if !id_match {
-                continue;
-            }
-            if let Some(err) = msg.get("error") {
-                return Err(format!("MCP RPC 错误: {}", err));
-            }
-            return msg
-                .get("result")
-                .cloned()
-                .ok_or_else(|| "MCP 响应缺少 result".to_string());
-        }
-
-        // Non-compliant but observed in some hosted servers: omit `id` in SSE payload.
-        // If we got exactly one message with a result, accept it.
-        let mut lone_result: Option<serde_json::Value> = None;
-        for msg in parsed {
-            if msg.get("error").is_some() {
-                return Err(format!("MCP RPC 错误: {}", msg.get("error").unwrap()));
-            }
-            if msg.get("id").is_none() {
-                if let Some(r) = msg.get("result") {
-                    if lone_result.is_some() {
-                        lone_result = None;
-                        break;
-                    }
-                    lone_result = Some(r.clone());
+            if let Ok(name) = reqwest::header::HeaderName::from_bytes(k.as_bytes()) {
+                if let Ok(val) = reqwest::header::HeaderValue::from_str(v) {
+                    default_headers.insert(name, val);
                 }
             }
         }
-        if let Some(r) = lone_result {
-            return Ok(r);
-        }
-
-        return Err("MCP SSE 响应缺少匹配的 response".to_string());
     }
 
-    Err(format!(
-        "MCP 响应 Content-Type 不支持: {}",
-        headers
-            .get(reqwest::header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("<missing>")
-    ))
-}
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(8))
+        .timeout(Duration::from_secs(30))
+        .default_headers(default_headers)
+        .build()
+        .map_err(|e| format!("Failed to build reqwest client: {}", e))?;
 
-pub async fn mcp_send_notification(
-    server: &McpRemoteServer,
-    state: &AppState,
-    method: &str,
-    params: serde_json::Value,
-    include_session_headers: bool,
-) -> Result<(), String> {
-    let message = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": method,
-        "params": params,
-    });
-    let (status, _headers, _body) =
-        mcp_post_jsonrpc(server, Some(state), message, include_session_headers).await?;
-    if status.as_u16() == 202 || status.is_success() {
-        return Ok(());
-    }
-    Err(format!("MCP HTTP 错误: {}", status))
-}
+    let transport = StreamableHttpClientTransport::with_client(
+        client,
+        StreamableHttpClientTransportConfig::with_uri(server.url.clone()),
+    );
 
-pub async fn mcp_ensure_initialized(
-    server: &McpRemoteServer,
-    state: &AppState,
-) -> Result<(), String> {
-    let now = chrono::Utc::now().timestamp();
-    let needs_init = {
-        let sessions = state.mcp_sessions.lock().unwrap();
-        match sessions.get(&server.id) {
-            Some(s) if s.initialized && s.url == server.url => false,
-            _ => true,
-        }
-    };
-    if !needs_init {
-        return Ok(());
-    }
+    let service = ().serve(transport).await
+        .map_err(|e| format!("Failed to serve MCP client: {}", e))?;
 
-    if mcp_debug_enabled() {
-        println!(
-            "[mcp][debug] initialize start server_id={} url={}",
-            server.id, server.url
-        );
-    }
-
-    let init_id = uuid::Uuid::new_v4().to_string();
-    let init_msg = serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": init_id,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": mcp_default_protocol_version(),
-            "capabilities": {},
-            "clientInfo": {
-                "name": "inflow",
-                "version": env!("CARGO_PKG_VERSION"),
-            }
-        }
-    });
-
-    let (status, headers, body) = mcp_post_jsonrpc(server, Some(state), init_msg, false).await?;
-    if !status.is_success() {
-        return Err(format!("MCP HTTP 错误: {}", status));
-    }
-
-    let content_type = headers
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_lowercase();
-
-    let init_result: serde_json::Value = if content_type.contains("application/json") {
-        serde_json::from_str(&body).map_err(|e| format!("MCP initialize 响应解析失败: {}", e))?
-    } else if content_type.contains("text/event-stream") {
-        let mut found: Option<serde_json::Value> = None;
-        let mut parsed: Vec<serde_json::Value> = Vec::new();
-        for data in parse_sse_data_events(&body) {
-            let msg: serde_json::Value = match serde_json::from_str(&data) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            parsed.push(msg.clone());
-            let id_match = msg
-                .get("id")
-                .and_then(|v| v.as_str())
-                .map(|s| s == init_id)
-                .unwrap_or(false);
-            if id_match {
-                found = Some(msg);
-                break;
-            }
-        }
-        if let Some(v) = found {
-            v
-        } else {
-            // Non-compliant fallback: accept a single init result without id.
-            let mut lone: Option<serde_json::Value> = None;
-            for msg in parsed {
-                if msg.get("id").is_none() && msg.get("result").is_some() {
-                    if lone.is_some() {
-                        lone = None;
-                        break;
-                    }
-                    lone = Some(msg);
-                }
-            }
-            lone.ok_or_else(|| "MCP initialize SSE 响应缺少匹配的 response".to_string())?
-        }
-    } else {
-        return Err(format!(
-            "MCP initialize 响应 Content-Type 不支持: {}",
-            headers
-                .get(reqwest::header::CONTENT_TYPE)
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("<missing>")
-        ));
-    };
-
-    if let Some(err) = init_result.get("error") {
-        return Err(format!("MCP initialize RPC 错误: {}", err));
-    }
-
-    let negotiated = init_result
-        .get("result")
-        .and_then(|r| r.get("protocolVersion"))
-        .and_then(|v| v.as_str())
-        .unwrap_or(mcp_default_protocol_version())
-        .to_string();
-
-    let session_id = headers
-        .get("Mcp-Session-Id")
-        .or_else(|| headers.get("mcp-session-id"))
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-        .filter(|s| !s.trim().is_empty());
-
-    if mcp_debug_enabled() {
-        println!(
-            "[mcp][debug] initialize ok server_id={} protocolVersion={} session_id_present={}",
-            server.id,
-            negotiated,
-            session_id.is_some()
-        );
-    }
+    let peer = service.peer().clone();
 
     {
-        let mut sessions = state.mcp_sessions.lock().unwrap();
-        sessions.insert(
-            server.id.clone(),
-            McpServerSession {
-                url: server.url.clone(),
-                protocol_version: negotiated.clone(),
-                session_id,
-                initialized: true,
-                initialized_at: now,
-            },
-        );
+        let mut services = state.mcp_services.lock().unwrap();
+        services.insert(server.id.clone(), service);
     }
-
-    // Per spec: client should send notifications/initialized after initialize.
-    mcp_send_notification(
-        server,
-        state,
-        "notifications/initialized",
-        serde_json::json!({}),
-        true,
-    )
-    .await?;
-    Ok(())
-}
-
-pub fn mcp_http_status_from_error(err: &str) -> Option<u16> {
-    let prefix = "MCP HTTP 错误:";
-    let rest = err.strip_prefix(prefix)?.trim_start();
-    let code_str = rest.split_whitespace().next()?;
-    code_str.parse::<u16>().ok()
+    Ok(peer)
 }
 
 pub async fn mcp_rpc(
@@ -528,7 +68,7 @@ pub async fn mcp_rpc(
     method: &str,
     params: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    mcp_ensure_initialized(server, state).await?;
+    let peer = get_or_create_mcp_service(server, state).await?;
 
     if mcp_debug_enabled() {
         println!(
@@ -537,62 +77,48 @@ pub async fn mcp_rpc(
         );
     }
 
-    let attempt = mcp_call_request(server, state, method, params.clone(), true).await;
-    if let Err(e) = &attempt {
-        // If session expired or server requires re-init, reset session and retry once.
-        if let Some(code) = mcp_http_status_from_error(e) {
-            if code == 404 || code == 400 {
-                if mcp_debug_enabled() {
-                    println!(
-                        "[mcp][debug] rpc retry server_id={} method={} reason_http={}",
-                        server.id, method, code
-                    );
-                }
-                {
-                    let mut sessions = state.mcp_sessions.lock().unwrap();
-                    sessions.remove(&server.id);
-                }
-                // Clear tools cache too; tools list may be session-scoped.
-                {
-                    let mut cache = state.mcp_tools_cache.lock().unwrap();
-                    cache.remove(&server.id);
-                }
+    if method == "tools/call" {
+        let tool_name = params.get("name").and_then(|v| v.as_str()).ok_or("Missing tool name")?;
+        let arguments = params.get("arguments").and_then(|v| v.as_object()).cloned();
+        
+        let req = CallToolRequestParams {
+            meta: None,
+            name: tool_name.to_string().into(),
+            arguments,
+            task: None,
+        };
 
-                mcp_ensure_initialized(server, state).await?;
-                return mcp_call_request(server, state, method, params, true).await;
-            }
-        }
+        let result = peer.call_tool(req).await
+            .map_err(|e| format!("MCP call_tool failed: {}", e))?;
+        
+        return serde_json::to_value(result).map_err(|e| e.to_string());
     }
-    attempt
+
+    if method == "tools/list" {
+        let res = peer.list_tools(Default::default()).await
+            .map_err(|e| format!("MCP list_tools failed: {}", e))?;
+        return serde_json::to_value(res).map_err(|e| e.to_string());
+    }
+
+    Err(format!("Unsupported MCP method via generic rpc: {}", method))
 }
 
 pub async fn mcp_tools_list(
     server: &McpRemoteServer,
     state: &AppState,
 ) -> Result<Vec<McpToolMeta>, String> {
-    let res = mcp_rpc(server, state, "tools/list", serde_json::json!({})).await?;
-    let tools = res
-        .get("tools")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| "MCP tools/list 返回缺少 tools".to_string())?;
+    let peer = get_or_create_mcp_service(server, state).await?;
+    
+    let res = peer.list_tools(Default::default()).await
+        .map_err(|e| format!("MCP list_tools failed: {}", e))?;
 
     let mut out = Vec::new();
-    for t in tools {
-        let tool_name = t
-            .get("name")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "MCP tool 缺少 name".to_string())?
-            .to_string();
-        let description = t
-            .get("description")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let input_schema = t.get("inputSchema").cloned();
+    for t in res.tools {
         out.push(McpToolMeta {
             server_id: server.id.clone(),
-            tool_name,
-            description,
-            input_schema,
+            tool_name: t.name.to_string(),
+            description: t.description.map(|s| s.to_string()),
+            input_schema: Some(serde_json::to_value(t.input_schema).unwrap_or(serde_json::Value::Null)),
         });
     }
 
@@ -619,22 +145,6 @@ pub async fn get_cached_mcp_tools(
         .filter(|s| s.enabled)
         .collect();
 
-    if mcp_debug_enabled() {
-        println!(
-            "[mcp][debug] get_cached_mcp_tools enabled_servers={}",
-            servers.len()
-        );
-        for s in &servers {
-            println!(
-                "[mcp][debug] server enabled id={} name={} url={} allowlist={}",
-                s.id,
-                s.name,
-                s.url,
-                s.tools_allowlist.as_ref().map(|v| v.len()).unwrap_or(0)
-            );
-        }
-    }
-
     if servers.is_empty() {
         return Ok(Vec::new());
     }
@@ -642,70 +152,47 @@ pub async fn get_cached_mcp_tools(
     let now = chrono::Utc::now().timestamp();
     let ttl_seconds: i64 = 300; // 5 minutes
 
-    let futs = servers.into_iter().map(|server| {
-        let state = state;
-        async move {
-            let cache_hit = {
-                let cache = state.mcp_tools_cache.lock().unwrap();
-                cache
-                    .get(&server.id)
-                    .filter(|c| now - c.fetched_at < ttl_seconds)
-                    .cloned()
-            };
+    let mut results = Vec::new();
+    for server in servers {
+        let cache_hit = {
+            let cache = state.mcp_tools_cache.lock().unwrap();
+            cache
+                .get(&server.id)
+                .filter(|c| now - c.fetched_at < ttl_seconds)
+                .cloned()
+        };
 
-            if mcp_debug_enabled() {
-                println!(
-                    "[mcp][debug] tools cache {} server_id={} age_seconds={}",
-                    if cache_hit.is_some() { "hit" } else { "miss" },
-                    server.id,
-                    cache_hit.as_ref().map(|c| now - c.fetched_at).unwrap_or(-1)
-                );
-            }
-
-            let mut tools = if let Some(cached) = cache_hit {
-                cached.tools
-            } else {
-                match mcp_tools_list(&server, state).await {
-                    Ok(fetched) => {
-                        let mut cache = state.mcp_tools_cache.lock().unwrap();
-                        cache.insert(
-                            server.id.clone(),
-                            CachedMcpTools {
-                                tools: fetched.clone(),
-                                fetched_at: now,
-                            },
-                        );
-                        fetched
-                    }
-                    Err(err) => {
-                        println!(
-                            "[mcp] tools/list failed server_id={} url={}: {}",
-                            server.id, server.url, err
-                        );
-                        Vec::new()
-                    }
-                }
-            };
-
-            if let Some(allow) = server.tools_allowlist.as_ref() {
-                let before = tools.len();
-                tools.retain(|t| allow.contains(&t.tool_name));
-                if mcp_debug_enabled() {
-                    let names: Vec<String> = tools.iter().map(|t| t.tool_name.clone()).collect();
-                    println!(
-                        "[mcp][debug] allowlist applied server_id={} before={} after={} allowed={}",
-                        server.id,
-                        before,
-                        tools.len(),
-                        names.join(",")
+        let mut tools = if let Some(cached) = cache_hit {
+            cached.tools
+        } else {
+            match mcp_tools_list(&server, state).await {
+                Ok(fetched) => {
+                    let mut cache = state.mcp_tools_cache.lock().unwrap();
+                    cache.insert(
+                        server.id.clone(),
+                        CachedMcpTools {
+                            tools: fetched.clone(),
+                            fetched_at: now,
+                        },
                     );
+                    fetched
+                }
+                Err(err) => {
+                    println!(
+                        "[mcp] tools/list failed server_id={} url={}: {}",
+                        server.id, server.url, err
+                    );
+                    Vec::new()
                 }
             }
-            tools
-        }
-    });
+        };
 
-    let results: Vec<Vec<McpToolMeta>> = futures::future::join_all(futs).await;
+        if let Some(allow) = server.tools_allowlist.as_ref() {
+            tools.retain(|t| allow.contains(&t.tool_name));
+        }
+        results.push(tools);
+    }
+
     let mut out = Vec::new();
     for mut tools in results {
         out.append(&mut tools);
@@ -714,7 +201,6 @@ pub async fn get_cached_mcp_tools(
 }
 
 pub fn parse_mcp_fn_name(fn_name: &str) -> Option<(String, String)> {
-    // mcp__{serverId}__{toolName}
     let prefix = "mcp__";
     if !fn_name.starts_with(prefix) {
         return None;

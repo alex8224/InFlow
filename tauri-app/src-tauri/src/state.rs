@@ -42,6 +42,7 @@ pub struct AppState {
     pub chat_cancel_notifiers: Mutex<HashMap<String, Arc<tokio::sync::Notify>>>,
     pub translate_cancel_flags: Mutex<HashMap<String, Arc<AtomicBool>>>,
     pub translate_cancel_notifiers: Mutex<HashMap<String, Arc<tokio::sync::Notify>>>,
+    pub mcp_services: Mutex<HashMap<String, rmcp::service::RunningService<rmcp::RoleClient, ()>>>,
     pub mcp_tools_cache: Mutex<HashMap<String, CachedMcpTools>>,
     pub mcp_sessions: Mutex<HashMap<String, McpServerSession>>,
     pub is_quitting: AtomicBool,
