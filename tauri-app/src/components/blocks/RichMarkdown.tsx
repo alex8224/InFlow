@@ -5,6 +5,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { Copy, Check, Maximize, X } from 'lucide-react';
 import 'prismjs/themes/prism.css';
 import 'katex/dist/katex.min.css';
@@ -24,7 +25,7 @@ import 'prismjs/components/prism-yaml';
 const Prism: any = (PrismNS as any).default ?? PrismNS;
 
 import { cn } from '../../lib/cn';
-import { readLocalImageDataUrl } from '../../integrations/tauri/api';
+import { handleDeepLinkFromFrontend, readLocalImageDataUrl } from '../../integrations/tauri/api';
 
 type MermaidRenderResult = { svg: string };
 
@@ -678,8 +679,33 @@ const markdownComponents: any = {
     if (!resolvedHref) {
       return <span>{children}</span>;
     }
+
+    const handleClick = (e: React.MouseEvent) => {
+      if (!href) return;
+
+      // Ignore internal anchors
+      if (href.startsWith('#')) return;
+
+      e.preventDefault();
+
+      // Handle deep links
+      if (href.startsWith('inflow://')) {
+        handleDeepLinkFromFrontend(href).catch(console.error);
+        return;
+      }
+
+      // Open in system browser
+      openUrl(href).catch(console.error);
+    };
+
     return (
-      <a href={resolvedHref} target="_blank" rel="noreferrer" className="underline decoration-primary/40 hover:decoration-primary break-all">
+      <a
+        href={resolvedHref}
+        onClick={handleClick}
+        target="_blank"
+        rel="noreferrer"
+        className="underline decoration-primary/40 hover:decoration-primary break-all"
+      >
         {children}
       </a>
     );
