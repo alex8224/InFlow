@@ -8,7 +8,7 @@ export type ChatMessagePart =
   | { type: "markdown"; content: string }
   | { type: "thought"; content: string }
   | { type: "image"; content: string }
-  | { type: "file"; mime: string; data: string } // data is base64
+  | { type: "file"; mime: string; data: string; name?: string } // data is base64
   | { type: "toolCall"; callId: string }
   | { type: "toolResult"; callId: string }
   | { type: "error"; message: string };
@@ -39,14 +39,14 @@ type ChatStore = {
   selectedTools: string[];
   input: string;
   pendingImages: string[];
-  pendingFiles: { mime: string; data: string }[];
+  pendingFiles: { mime: string; data: string; name?: string }[];
 
   setSession: (sessionId: string) => void;
   setSessionTitle: (title: string) => void;
   setSessionProviderId: (providerId: string) => void;
   setInput: (value: string) => void;
   addPendingImage: (base64: string) => void;
-  addPendingFile: (mime: string, data: string) => void;
+  addPendingFile: (mime: string, data: string, name?: string) => void;
   removePendingImage: (index: number) => void;
   removePendingFile: (index: number) => void;
   clearPendingImages: () => void;
@@ -102,8 +102,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   setInput: (value) => set({ input: value }),
   addPendingImage: (base64) =>
     set({ pendingImages: [...get().pendingImages, base64] }),
-  addPendingFile: (mime, data) =>
-    set({ pendingFiles: [...get().pendingFiles, { mime, data }] }),
+  addPendingFile: (mime, data, name) =>
+    set({ pendingFiles: [...get().pendingFiles, { mime, data, name }] }),
   removePendingImage: (index) =>
     set({ pendingImages: get().pendingImages.filter((_, i) => i !== index) }),
   removePendingFile: (index) =>

@@ -1418,10 +1418,13 @@ export function ChatOverlayView() {
                   const mime = mimeMatch ? mimeMatch[1] : "application/octet-stream";
                   const base64Data = dataUrl.split(",")[1];
 
+                  const pathParts = path.split(/[\\\/]/);
+                  const fileName = pathParts[pathParts.length - 1];
+
                   if (mime.startsWith("image/")) {
                     addPendingImage(dataUrl);
                   } else {
-                    addPendingFile(mime, base64Data);
+                    addPendingFile(mime, base64Data, fileName);
                   }
                 } catch (err) {
                   console.error("Failed to process dropped file:", err);
@@ -1687,12 +1690,12 @@ export function ChatOverlayView() {
                             <File className="w-6 h-6 text-white/60" />
                           )}
                         </div>
-                        <div className="flex flex-col min-w-0">
+                        <div className="flex flex-col min-w-0 flex-1">
                           <div className="text-[9px] font-black uppercase tracking-[0.2em] opacity-40">
-                            Attached File
+                            {p.name ? "File Attached" : "Attached File"}
                           </div>
-                          <div className="text-xs font-bold opacity-80 truncate">
-                            {p.mime}
+                          <div className="text-xs font-bold opacity-80 truncate" title={p.name}>
+                            {p.name || p.mime}
                           </div>
                         </div>
                       </div>
@@ -1943,8 +1946,8 @@ export function ChatOverlayView() {
                       ) : (
                         <File className="w-8 h-8 text-muted-foreground" />
                       )}
-                      <div className="text-[8px] font-bold mt-1 truncate w-full text-center opacity-60">
-                        {file.mime.split("/")[1] || "FILE"}
+                      <div className="text-[8px] font-bold mt-1 truncate w-full text-center opacity-60 px-1" title={file.name}>
+                        {file.name || file.mime.split("/")[1] || "FILE"}
                       </div>
                       <button
                         onClick={() => removePendingFile(idx)}
