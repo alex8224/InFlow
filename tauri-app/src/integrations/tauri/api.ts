@@ -43,7 +43,8 @@ export type ToolCatalogItem = {
 
 export type ChatPart = 
   | { type: 'text'; content: string }
-  | { type: 'image'; content: string }; // base64
+  | { type: 'image'; content: string } // base64, usually with data: prefix
+  | { type: 'file'; content: { mime: string; data: string } }; // data is base64
 
 export interface CapabilityInvocationUi {
   mode?: string;
@@ -182,8 +183,8 @@ export async function getClipboardImage(): Promise<string | null> {
   return await invoke('get_clipboard_image');
 }
 
-export async function readLocalImageDataUrl(path: string): Promise<string | null> {
-  return await invoke('read_local_image_data_url', { path });
+export async function readLocalFileDataUrl(path: string): Promise<string | null> {
+  return await invoke('read_local_file_data_url', { path });
 }
 
 export async function translateText(

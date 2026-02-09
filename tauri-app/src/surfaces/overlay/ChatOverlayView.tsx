@@ -12,6 +12,10 @@ import {
   Check,
   ChevronDown,
   Copy,
+  File,
+  FileAudio,
+  FileText,
+  FileVideo,
   Image as ImageIcon,
   MessageSquare,
   RotateCcw,
@@ -63,6 +67,7 @@ type SendOverride =
   | {
       text?: string;
       images?: string[];
+      files?: { mime: string; data: string }[];
       preserveComposer?: boolean;
     };
 
@@ -136,11 +141,15 @@ export function ChatOverlayView() {
     setSessionProviderId,
     input,
     pendingImages,
+    pendingFiles,
     setSession,
     setInput,
     addPendingImage,
+    addPendingFile,
     removePendingImage,
+    removePendingFile,
     clearPendingImages,
+    clearPendingFiles,
     appendUserMessage,
     startAssistantMessage,
     appendAssistantToken,
@@ -1236,12 +1245,15 @@ export function ChatOverlayView() {
     const overrideText = typeof override === "string" ? override : override?.text;
     const overrideImages =
       typeof override === "object" ? override.images : undefined;
+    const overrideFiles =
+      typeof override === "object" ? override.files : undefined;
     const preserveComposer =
       typeof override === "object" && Boolean(override?.preserveComposer);
 
     const text = (overrideText ?? input).trim();
     const images = overrideImages ?? pendingImages;
-    if (!text && images.length === 0) return;
+    const files = overrideFiles ?? pendingFiles;
+    if (!text && images.length === 0 && files.length === 0) return;
 
     if (!currentProviderId) {
       const msgId = startAssistantMessage();
@@ -1270,10 +1282,14 @@ export function ChatOverlayView() {
     for (const img of images) {
       parts.push({ type: "image", content: img });
     }
+    for (const f of files) {
+      parts.push({ type: "file", ...f });
+    }
 
     if (!preserveComposer) {
       setInput("");
       clearPendingImages();
+      clearPendingFiles();
       setIsInputVisible(false);
     }
     appendUserMessage(parts as any);
@@ -1319,6 +1335,7 @@ export function ChatOverlayView() {
       const streamParts = parts.map((p) => {
         if (p.type === "markdown") return { type: "text", content: p.content };
         if (p.type === "image") return { type: "image", content: p.content };
+        if (p.type === "file") return { type: "file", content: { mime: p.mime, data: p.data } };
         return p;
       });
       await chatStream(
@@ -1355,9 +1372,12 @@ export function ChatOverlayView() {
       const images = parts
         .filter((p): p is { type: "image"; content: string } => p.type === "image")
         .map((p) => p.content);
+      const files = parts
+        .filter((p): p is { type: "file"; mime: string; data: string } => p.type === "file")
+        .map((p) => ({ mime: p.mime, data: p.data }));
       const send = handleSendRef.current;
       if (!send) return;
-      void send({ text, images, preserveComposer: true });
+      void send({ text, images, files, preserveComposer: true });
     },
     [isStreaming],
   );
@@ -1375,6 +1395,18 @@ export function ChatOverlayView() {
           };
           reader.readAsDataURL(file);
         }
+      } else {
+        const file = item.getAsFile();
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (prev) => {
+            const result = prev.target?.result as string;
+            const commaIdx = result.indexOf(",");
+            const data = commaIdx > -1 ? result.slice(commaIdx + 1) : result;
+            addPendingFile(file.type, data);
+          };
+          reader.readAsDataURL(file);
+        }
       }
     }
   };
@@ -1388,6 +1420,15 @@ export function ChatOverlayView() {
         reader.onload = (prev) => {
           const base64 = prev.target?.result as string;
           addPendingImage(base64);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        const reader = new FileReader();
+        reader.onload = (prev) => {
+          const result = prev.target?.result as string;
+          const commaIdx = result.indexOf(",");
+          const data = commaIdx > -1 ? result.slice(commaIdx + 1) : result;
+          addPendingFile(file.type, data);
         };
         reader.readAsDataURL(file);
       }
@@ -1439,7 +1480,7 @@ export function ChatOverlayView() {
         el.scrollHeight - el.clientHeight - frozenOffsetFromBottomRef.current;
       el.scrollTop = Math.max(0, target);
     });
-  }, [input, isStreaming, pendingImages.length]);
+  }, [input, isStreaming, pendingImages.length, pendingFiles.length]);
 
   const TypingIndicator = () => {
     return (
@@ -1561,6 +1602,30 @@ export function ChatOverlayView() {
                         />
                       </div>
                     )}
+                    {p.type === "file" && (
+                      <div className="rounded-xl border border-white/15 bg-white/5 p-3 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center">
+                          {p.mime.includes("pdf") ? (
+                            <FileText className="w-6 h-6 text-rose-300" />
+                          ) : p.mime.startsWith("audio/") ? (
+                            <FileAudio className="w-6 h-6 text-amber-300" />
+                          ) : p.mime.startsWith("video/") ? (
+                            <FileVideo className="w-6 h-6 text-indigo-300" />
+                          ) : (
+                            <File className="w-6 h-6 text-white/60" />
+                          )}
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <div className="text-[9px] font-black uppercase tracking-[0.2em] opacity-40">
+                            Attached File
+                          </div>
+                          <div className="text-xs font-bold opacity-80 truncate">
+                            {p.mime}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                   </div>
                 ))}
               </div>
@@ -1751,11 +1816,11 @@ export function ChatOverlayView() {
                 : "scale-50 opacity-0 pointer-events-none absolute w-full",
             )}
           >
-            {pendingImages.length > 0 && (
+            {(pendingImages.length > 0 || pendingFiles.length > 0) && (
               <div className="flex flex-wrap gap-2 mb-1">
                 {pendingImages.map((img, idx) => (
                   <div
-                    key={idx}
+                    key={`img-${idx}`}
                     className="relative group rounded-xl overflow-hidden border border-border shadow-sm bg-background"
                   >
                     <img
@@ -1771,6 +1836,40 @@ export function ChatOverlayView() {
                     </button>
                   </div>
                 ))}
+                {pendingFiles.map((file, idx) => {
+                  const isPdf = file.mime === "application/pdf";
+                  const isAudio = file.mime.startsWith("audio/");
+                  const isVideo = file.mime.startsWith("video/");
+                  const isText = file.mime.startsWith("text/");
+
+                  return (
+                    <div
+                      key={`file-${idx}`}
+                      className="relative group rounded-xl w-20 h-20 flex flex-col items-center justify-center border border-border shadow-sm bg-muted/30 p-2"
+                    >
+                      {isPdf ? (
+                        <FileText className="w-8 h-8 text-rose-400" />
+                      ) : isAudio ? (
+                        <FileAudio className="w-8 h-8 text-amber-400" />
+                      ) : isVideo ? (
+                        <FileVideo className="w-8 h-8 text-indigo-400" />
+                      ) : isText ? (
+                        <FileText className="w-8 h-8 text-emerald-400" />
+                      ) : (
+                        <File className="w-8 h-8 text-muted-foreground" />
+                      )}
+                      <div className="text-[8px] font-bold mt-1 truncate w-full text-center opacity-60">
+                        {file.mime.split("/")[1] || "FILE"}
+                      </div>
+                      <button
+                        onClick={() => removePendingFile(idx)}
+                        className="absolute top-1 right-1 p-1 rounded-full bg-background/80 backdrop-blur-sm text-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -1783,7 +1882,7 @@ export function ChatOverlayView() {
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileSelect}
-                  accept="image/*"
+                  accept="image/*,application/pdf,audio/*,video/*,text/plain"
                   multiple
                   className="hidden"
                 />
@@ -2158,7 +2257,7 @@ export function ChatOverlayView() {
                     size="icon"
                     onClick={() => fileInputRef.current?.click()}
                     className="h-9 w-9 rounded-xl text-muted-foreground/60 hover:text-primary hover:bg-primary/5 transition-all"
-                    title="Upload Image"
+                    title="Upload File"
                   >
                     <ImageIcon className="w-5 h-5" />
                   </Button>
@@ -2167,11 +2266,11 @@ export function ChatOverlayView() {
                     disabled={
                       !currentProviderId ||
                       isStreaming ||
-                      (!input.trim() && pendingImages.length === 0)
+                      (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0)
                     }
                     className={cn(
                       "h-9 w-9 rounded-xl transition-all shadow-md",
-                      input.trim() || pendingImages.length > 0
+                      input.trim() || pendingImages.length > 0 || pendingFiles.length > 0
                         ? "bg-primary text-primary-foreground shadow-primary/20 hover:scale-105"
                         : "bg-muted text-muted-foreground/40",
                     )}

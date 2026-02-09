@@ -25,7 +25,7 @@ import 'prismjs/components/prism-yaml';
 const Prism: any = (PrismNS as any).default ?? PrismNS;
 
 import { cn } from '../../lib/cn';
-import { handleDeepLinkFromFrontend, readLocalImageDataUrl } from '../../integrations/tauri/api';
+import { handleDeepLinkFromFrontend, readLocalFileDataUrl } from '../../integrations/tauri/api';
 
 type MermaidRenderResult = { svg: string };
 
@@ -577,7 +577,7 @@ function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
       };
     }
 
-    readLocalImageDataUrl(localPath)
+    readLocalFileDataUrl(localPath)
       .then((dataUrl) => {
         if (cancelled) return;
         if (dataUrl) {

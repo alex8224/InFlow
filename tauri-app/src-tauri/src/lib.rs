@@ -159,7 +159,7 @@ pub fn run() {
             misc::open_workspace,
             misc::get_clipboard_text,
             misc::get_clipboard_image,
-            misc::read_local_image_data_url,
+            misc::read_local_file_data_url,
             misc::handle_deep_link_from_frontend,
             share::chat_share_create,
             share::get_share_server_port,

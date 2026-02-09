@@ -22,6 +22,7 @@ use tauri::{AppHandle, Emitter, State};
 pub enum ChatPart {
     Text(String),
     Image(String), // base64, possibly with data: prefix
+    File { mime: String, data: String }, // base64 data
 }
 
 fn extract_system_prompt_from_prompts_md(md: &str) -> Option<String> {
@@ -215,6 +216,13 @@ pub async fn chat_stream(
                     genai_parts.push(genai::chat::ContentPart::Binary(genai::chat::Binary::new(
                         mime,
                         genai::chat::BinarySource::Base64(data_b64.to_string().into()),
+                        None,
+                    )));
+                }
+                ChatPart::File { mime, data } => {
+                    genai_parts.push(genai::chat::ContentPart::Binary(genai::chat::Binary::new(
+                        mime.clone(),
+                        genai::chat::BinarySource::Base64(data.clone().into()),
                         None,
                     )));
                 }

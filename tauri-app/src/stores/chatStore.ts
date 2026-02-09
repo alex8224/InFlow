@@ -8,6 +8,7 @@ export type ChatMessagePart =
   | { type: "markdown"; content: string }
   | { type: "thought"; content: string }
   | { type: "image"; content: string }
+  | { type: "file"; mime: string; data: string } // data is base64
   | { type: "toolCall"; callId: string }
   | { type: "toolResult"; callId: string }
   | { type: "error"; message: string };
@@ -38,14 +39,18 @@ type ChatStore = {
   selectedTools: string[];
   input: string;
   pendingImages: string[];
+  pendingFiles: { mime: string; data: string }[];
 
   setSession: (sessionId: string) => void;
   setSessionTitle: (title: string) => void;
   setSessionProviderId: (providerId: string) => void;
   setInput: (value: string) => void;
   addPendingImage: (base64: string) => void;
+  addPendingFile: (mime: string, data: string) => void;
   removePendingImage: (index: number) => void;
+  removePendingFile: (index: number) => void;
   clearPendingImages: () => void;
+  clearPendingFiles: () => void;
   resetSession: () => void;
   clearConversation: () => void;
 
@@ -89,6 +94,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   ],
   input: "",
   pendingImages: [],
+  pendingFiles: [],
 
   setSession: (sessionId) => set({ sessionId }),
   setSessionTitle: (title) => set({ sessionTitle: title }),
@@ -96,9 +102,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   setInput: (value) => set({ input: value }),
   addPendingImage: (base64) =>
     set({ pendingImages: [...get().pendingImages, base64] }),
+  addPendingFile: (mime, data) =>
+    set({ pendingFiles: [...get().pendingFiles, { mime, data }] }),
   removePendingImage: (index) =>
     set({ pendingImages: get().pendingImages.filter((_, i) => i !== index) }),
+  removePendingFile: (index) =>
+    set({ pendingFiles: get().pendingFiles.filter((_, i) => i !== index) }),
   clearPendingImages: () => set({ pendingImages: [] }),
+  clearPendingFiles: () => set({ pendingFiles: [] }),
 
   resetSession: () => {
     set({
@@ -110,6 +121,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       selectedTools: [],
       input: "",
       pendingImages: [],
+      pendingFiles: [],
     });
   },
 
@@ -120,6 +132,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       toolCalls: {},
       input: "",
       pendingImages: [],
+      pendingFiles: [],
     });
   },
 

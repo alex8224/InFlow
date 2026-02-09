@@ -97,13 +97,13 @@ pub fn get_clipboard_image() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-pub fn read_local_image_data_url(path: String) -> Result<Option<String>, String> {
+pub fn read_local_file_data_url(path: String) -> Result<Option<String>, String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
         return Ok(None);
     }
 
-    let p = match resolve_local_image_path(trimmed) {
+    let p = match resolve_local_file_path(trimmed) {
         Some(v) => v,
         None => return Ok(None),
     };
@@ -124,15 +124,21 @@ pub fn read_local_image_data_url(path: String) -> Result<Option<String>, String>
         Some("webp") => "image/webp",
         Some("bmp") => "image/bmp",
         Some("svg") => "image/svg+xml",
-        _ => return Ok(None),
+        Some("pdf") => "application/pdf",
+        Some("mp3") => "audio/mpeg",
+        Some("wav") => "audio/wav",
+        Some("mp4") => "video/mp4",
+        Some("mov") => "video/quicktime",
+        Some("txt") => "text/plain",
+        _ => "application/octet-stream",
     };
 
-    let data = std::fs::read(&p).map_err(|e| format!("读取图片失败: {}", e))?;
+    let data = std::fs::read(&p).map_err(|e| format!("读取文件失败: {}", e))?;
     let b64 = general_purpose::STANDARD.encode(data);
     Ok(Some(format!("data:{};base64,{}", mime, b64)))
 }
 
-fn resolve_local_image_path(input: &str) -> Option<PathBuf> {
+fn resolve_local_file_path(input: &str) -> Option<PathBuf> {
     let p = PathBuf::from(input);
     if p.is_absolute() {
         return Some(p);
