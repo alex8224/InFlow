@@ -5,7 +5,7 @@ use crate::config::{AppConfig, LlmProvider};
 use crate::genai_client::sanitize_tool_schema_for_provider;
 use crate::state::AppState;
 
-use super::BuiltinToolSpec;
+use super::{BuiltinToolSpec, ToolCategory};
 use crate::llm_tools::ToolExecResult;
 
 pub const TOOL_GET_CURRENT_DATETIME: &str = "inflow__get_current_datetime";
@@ -52,6 +52,7 @@ pub fn spec() -> BuiltinToolSpec {
     BuiltinToolSpec {
         fn_name: TOOL_GET_CURRENT_DATETIME,
         title: "Local datetime",
+        category: ToolCategory::System,
         description: Some("Get current local date/time (prevents wrong year in search)."),
         build,
         exec,

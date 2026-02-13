@@ -20,7 +20,7 @@ use crate::llm_tools::ToolExecResult;
 use crate::share_server;
 use crate::state::AppState;
 
-use super::BuiltinToolSpec;
+use super::{BuiltinToolSpec, ToolCategory};
 
 pub const TOOL_AGENT_BROWSER: &str = "inflow__agent_browser";
 
@@ -1761,6 +1761,7 @@ pub fn spec() -> BuiltinToolSpec {
     BuiltinToolSpec {
         fn_name: TOOL_AGENT_BROWSER,
         title: "Agent Browser",
+        category: ToolCategory::Web,
         description: Some(
             "Browser automation with safe action subset (includes tab; no eval/profile).",
         ),

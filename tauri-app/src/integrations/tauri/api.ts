@@ -35,6 +35,7 @@ export type ToolCatalogItem = {
   fnName: string;
   source: 'builtin' | 'mcp' | string;
   title: string;
+  category?: string | null;
   description?: string | null;
   serverId?: string | null;
   serverName?: string | null;

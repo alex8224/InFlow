@@ -12,6 +12,7 @@ mod builtin;
 
 #[allow(unused_imports)]
 pub use builtin::agent_browser::TOOL_AGENT_BROWSER;
+pub use builtin::fs::{TOOL_GREP, TOOL_LIST_FILE, TOOL_READ_FILE, TOOL_WRITE_FILE};
 pub use builtin::time::TOOL_GET_CURRENT_DATETIME;
 #[allow(unused_imports)]
 pub use builtin::webfetch::TOOL_WEBFETCH;
@@ -28,6 +29,7 @@ pub struct ToolCatalogItem {
     pub fn_name: String,
     pub source: String, // "builtin" | "mcp"
     pub title: String,
+    pub category: Option<String>,
     pub description: Option<String>,
     pub server_id: Option<String>,
     pub server_name: Option<String>,
@@ -51,6 +53,7 @@ pub async fn catalog(config: &AppConfig, state: &AppState) -> Result<Vec<ToolCat
             fn_name: format!("mcp__{}__{}", t.server_id, t.tool_name),
             source: "mcp".to_string(),
             title: t.tool_name.clone(),
+            category: None,
             description: t.description.clone(),
             server_id: Some(t.server_id.clone()),
             server_name,

@@ -441,21 +441,30 @@ export function ChatOverlayView() {
     }));
   }, [toolsCatalog]);
 
-  const builtinCatalog = useMemo(() => {
-    return toolsCatalog
-      .filter((t) => t.source === 'builtin')
-      .slice()
-      .sort((a, b) => a.title.localeCompare(b.title));
+  const builtinCatalogByCategory = useMemo(() => {
+    const grouped = new Map<string, ToolCatalogItem[]>();
+    for (const t of toolsCatalog) {
+      if (t.source !== 'builtin') continue;
+      const cat = t.category ?? 'Other';
+      if (!grouped.has(cat)) grouped.set(cat, []);
+      grouped.get(cat)!.push(t);
+    }
+    for (const items of grouped.values()) {
+      items.sort((a, b) => a.title.localeCompare(b.title));
+    }
+    return Array.from(grouped.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [toolsCatalog]);
 
   const toolsFlatList = useMemo(() => {
     const out: ToolCatalogItem[] = [];
-    for (const t of builtinCatalog) out.push(t);
+    for (const [, items] of builtinCatalogByCategory) {
+      for (const t of items) out.push(t);
+    }
     for (const g of mcpCatalogByServer) {
       for (const t of g.items) out.push(t);
     }
     return out;
-  }, [builtinCatalog, mcpCatalogByServer]);
+  }, [builtinCatalogByCategory, mcpCatalogByServer]);
 
   useEffect(() => {
     if (!toolsOpen) return;
@@ -2208,13 +2217,13 @@ export function ChatOverlayView() {
                       </div>
                     ) : (
                       <div className="max-h-[320px] overflow-auto custom-scrollbar pr-1 space-y-3">
-                        {builtinCatalog.length > 0 && (
-                          <div className="rounded-xl border border-border/50 bg-muted/10 p-2">
+                        {builtinCatalogByCategory.map(([category, items]) => (
+                          <div key={category} className="rounded-xl border border-border/50 bg-muted/10 p-2">
                             <div className="px-1 pb-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground/70">
-                              Native Modules
+                              {category}
                             </div>
                             <div className="space-y-1">
-                              {builtinCatalog.map((t) => {
+                              {items.map((t) => {
                                 const checked = selectedTools.includes(t.fnName);
                                 const active =
                                   toolsFlatList[toolsActiveIndex]?.fnName === t.fnName;
@@ -2260,7 +2269,7 @@ export function ChatOverlayView() {
                               })}
                             </div>
                           </div>
-                        )}
+                        ))}
 
                         {mcpCatalogByServer.length > 0 && (
                           <div className="space-y-2">
@@ -2326,7 +2335,7 @@ export function ChatOverlayView() {
                           </div>
                         )}
 
-                        {builtinCatalog.length === 0 &&
+                        {builtinCatalogByCategory.length === 0 &&
                           mcpCatalogByServer.length === 0 && (
                             <div className="px-4 py-8 text-center">
                               <div className="text-[10px] font-bold text-muted-foreground uppercase">

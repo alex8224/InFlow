@@ -13,7 +13,7 @@ use crate::genai_client::sanitize_tool_schema_for_provider;
 use crate::llm_tools::ToolExecResult;
 use crate::state::AppState;
 
-use super::BuiltinToolSpec;
+use super::{BuiltinToolSpec, ToolCategory};
 
 pub const TOOL_WEBFETCH: &str = "inflow__webfetch";
 
@@ -451,6 +451,7 @@ pub fn spec() -> BuiltinToolSpec {
     BuiltinToolSpec {
         fn_name: TOOL_WEBFETCH,
         title: "Web fetch",
+        category: ToolCategory::Web,
         description: Some("Fetch a URL and return markdown/text/html."),
         build,
         exec,

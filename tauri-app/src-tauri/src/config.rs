@@ -56,6 +56,10 @@ pub struct AppConfig {
     // Optional browser executable path used by agent-browser (`--executable-path`).
     // Example (Windows): "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     pub agent_browser_executable_path: Option<String>,
+
+    // Allowed directories for fs tools (readFile, writeFile, listFile, grep).
+    // Example: ["C:\\Users\\Documents", "D:\\Projects"]
+    pub fs_allowed_dirs: Option<Vec<String>>,
 }
 
 impl AppConfig {
@@ -165,6 +169,7 @@ impl AppConfig {
             webfetch_proxy: None,
             agent_browser_cli_path: None,
             agent_browser_executable_path: None,
+            fs_allowed_dirs: None,
         }
     }
 
