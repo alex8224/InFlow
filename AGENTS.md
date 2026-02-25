@@ -14,11 +14,13 @@ inFlow is a Windows desktop application for "anywhere-callable capabilities" bui
 - **Type check**: `npx tsc`
 
 ### Backend (Rust/Tauri)
-- **Dev mode**: `npm run tauri dev`
+- **Dev mode**: `npm run tauri dev` (starts both frontend and backend)
 - **Build**: `npm run tauri build`
 - **Check**: `cargo check` (run in `tauri-app/src-tauri`)
+- **Format**: `cargo fmt` (run in `tauri-app/src-tauri`)
+- **Lint**: `cargo clippy` (run in `tauri-app/src-tauri`)
 - **Test all**: `cargo test` (run in `tauri-app/src-tauri`)
-- **Run single test**: `cargo test -- <test_name>`
+- **Run single test**: `cargo test -- <test_name>` (run in `tauri-app/src-tauri`)
 
 ## Code Style & Conventions
 
@@ -38,17 +40,22 @@ inFlow is a Windows desktop application for "anywhere-callable capabilities" bui
 
 ### Backend (Rust)
 - **Indentation**: 4 spaces (standard Rust).
+- **Formatting**: Run `cargo fmt` before committing.
 - **Naming**:
   - `snake_case` for functions, variables, and modules.
   - `PascalCase` for Structs, Enums, and Traits.
-- **Structure**:
-  - `AppState` in `src-tauri/src/state.rs` manages global state.
-  - Commands should be defined in `src-tauri/src/commands/` and registered in `lib.rs`.
-- **Error Handling**: 
+- **Import Groups**:
+  1. Standard library (`std`, `core`)
+  2. Third-party crates
+  3. Local modules (`crate::`)
+- **Error Handling**:
   - Prefer `Result<T, E>` with custom error types.
   - Use `?` operator for propagation.
-  - Avoid `unwrap()` in production code; use `expect()` or proper error handling.
-- **Patterns**: Use `tauri::State` to access global app state in commands.
+  - Avoid `unwrap()` on potential errors; use `expect()` with clear messages.
+- **Async Patterns**:
+  - Use `tokio` async runtime (configured in `Cargo.toml`).
+  - Avoid blocking the UI thread: offload heavy work to `tokio::task::spawn_blocking`.
+  - Commands are async by default: `async fn command_name(...) -> Result<...>`
 
 ## Architecture Guidelines
 
@@ -56,6 +63,25 @@ inFlow is a Windows desktop application for "anywhere-callable capabilities" bui
 - **Workspace (main)**: Persistent window for complex tasks.
 - **Overlay (overlay)**: Transient window for quick, context-aware tasks like translation.
 - Use `invocation.ui.mode` to determine which window to show or target.
+
+### Tauri Command Workflow
+1. **Define command** in `src-tauri/src/commands/<module>.rs`:
+   ```rust
+   #[tauri::command]
+   pub async fn my_command(state: tauri::State<'_, AppState>, arg1: String) -> Result<String, String> {
+       // Implementation
+   }
+   ```
+2. **Export** in `src-tauri/src/commands/mod.rs`.
+3. **Register** in `src-tauri/src/lib.rs`:
+   ```rust
+   tauri::generate_handler![my_command, other_command, ...]
+   ```
+
+### State Management
+- **AppState**: Located in `src-tauri/src/state.rs`, manages global state.
+- Use `Mutex` or `RwLock` for thread-safe access: `state.lock().unwrap()`.
+- Always release locks quickly to avoid deadlocks.
 
 ### Invocation & Registry System
 - **Capability**: Defines what the app can do (e.g., `translate.selection`).
@@ -71,8 +97,10 @@ inFlow is a Windows desktop application for "anywhere-callable capabilities" bui
 - Global events are listened to in `src/app/bootstrap.ts` and synced to `invocationStore`.
 
 ## Directory Structure Highlights
-- `tauri-app/src-tauri/src/commands/`: Rust command implementations.
+- `tauri-app/src-tauri/src/commands/`:
 - `tauri-app/src-tauri/src/llm_tools/`: Built-in tools for LLM interactions.
+- `tauri-app/src-tauri/src/state.rs`: Global application state.
+- `tauri-app/src-tauri/src/lib.rs`: Command registration and Tauri setup.
 - `tauri-app/src/surfaces/`: Top-level window components (Overlay, Workspace, Pet).
 - `tauri-app/src/integrations/tauri/api.ts`: Typed wrappers for Tauri `invoke` calls.
 
@@ -90,9 +118,12 @@ inFlow is a Windows desktop application for "anywhere-callable capabilities" bui
 - **Window not showing**: Check `windowing.rs` and the `ui.mode` in the invocation payload.
 - **Invoke failed**: Check if the command is registered in `tauri::generate_handler!` in `lib.rs`.
 - **Type errors**: Run `npx tsc` in `tauri-app/` to see all frontend type errors.
+- **Rust errors**: Run `cargo check` and check error messages for missing imports or type mismatches.
 
 ## Safety Rules
 - **NEVER** commit or log secrets (API keys, credentials, etc.).
 - **NEVER** use `unwrap()` on potential errors in Rust; use `expect()` with a clear message or return a `Result`.
 - **ALWAYS** run `npm run tauri dev` to verify both frontend and backend compilation before finishing a task.
 - **NEVER** modify `tauri.conf.json` without understanding the impact on window permissions and security.
+- **ALWAYS** sanitize user inputs before executing system commands or file operations.
+- **PREFER** blocking tasks to be offloaded to `spawn_blocking` to keep UI responsive.
