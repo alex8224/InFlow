@@ -119,22 +119,82 @@ impl AppConfig {
 
     pub fn load() -> Self {
         let path = Self::get_config_path();
+        let debug_enabled = std::env::var("INFLOW_DEBUG_CONFIG").ok().as_deref() == Some("1");
+
+        // Track where the effective config came from. This intentionally does not
+        // log the raw JSON to avoid leaking secrets like API keys.
+        let mut source: &'static str = "default_missing";
+        let mut read_error: Option<String> = None;
+        let mut parse_error: Option<String> = None;
+
         let mut config = if path.exists() {
-            fs::read_to_string(&path)
-                .ok()
-                .and_then(|content| serde_json::from_str(&content).ok())
-                .unwrap_or_else(Self::default_internal)
+            match fs::read_to_string(&path) {
+                Ok(content) => match serde_json::from_str::<Self>(&content) {
+                    Ok(cfg) => {
+                        source = "file";
+                        cfg
+                    }
+                    Err(e) => {
+                        source = "default_parse_error";
+                        parse_error = Some(e.to_string());
+                        Self::default_internal()
+                    }
+                },
+                Err(e) => {
+                    source = "default_read_error";
+                    read_error = Some(e.to_string());
+                    Self::default_internal()
+                }
+            }
         } else {
             Self::default_internal()
         };
 
-        if std::env::var("INFLOW_DEBUG_CONFIG").ok().as_deref() == Some("1") {
+        // Normalize: ensure required defaults exist even when config.json is partial.
+        let injected_providers = config.llm_providers.is_empty();
+        if injected_providers {
+            config.llm_providers = Self::get_default_providers();
+        }
+
+        let injected_active_provider = config.active_provider_id.is_none();
+        if injected_active_provider {
+            config.active_provider_id = config.llm_providers.first().map(|p| p.id.clone());
+        }
+
+        let injected_preferred_service = config.preferred_service.is_empty();
+        if injected_preferred_service {
+            config.preferred_service = "google".to_string();
+        }
+
+        if debug_enabled {
             println!(
-                "[config][debug] loaded path={} providers={} mcp_servers={}",
+                "[config][debug] loaded path={} source={} providers={} mcp_servers={} active_provider_id={:?} preferred_service={} injected={{providers:{},active_provider:{},preferred_service:{}}}",
                 path.display(),
+                source,
                 config.llm_providers.len(),
-                config.mcp_remote_servers.len()
+                config.mcp_remote_servers.len(),
+                config.active_provider_id,
+                config.preferred_service,
+                injected_providers,
+                injected_active_provider,
+                injected_preferred_service
             );
+
+            if let Some(e) = read_error.as_deref() {
+                eprintln!(
+                    "[config][debug] read_error path={} err={}",
+                    path.display(),
+                    e
+                );
+            }
+            if let Some(e) = parse_error.as_deref() {
+                eprintln!(
+                    "[config][debug] parse_error path={} err={}",
+                    path.display(),
+                    e
+                );
+            }
+
             for s in &config.mcp_remote_servers {
                 println!(
                     "[config][debug] mcp_server id={} name={} enabled={} url={} allowlist={}",
@@ -145,16 +205,6 @@ impl AppConfig {
                     s.tools_allowlist.as_ref().map(|v| v.len()).unwrap_or(0)
                 );
             }
-        }
-
-        if config.llm_providers.is_empty() {
-            config.llm_providers = Self::get_default_providers();
-        }
-        if config.active_provider_id.is_none() {
-            config.active_provider_id = config.llm_providers.first().map(|p| p.id.clone());
-        }
-        if config.preferred_service.is_empty() {
-            config.preferred_service = "google".to_string();
         }
 
         config
