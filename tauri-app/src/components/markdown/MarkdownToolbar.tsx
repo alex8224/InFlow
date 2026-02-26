@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { useMarkdownStore, EditorMode } from '../../stores/markdownStore';
 import {
   FilePlus,
@@ -12,14 +12,26 @@ import {
   ZoomOut,
   Maximize2,
   FileText,
+  Heading1,
+  Heading2,
+  Bold,
+  Italic,
+  List,
+  ListOrdered,
+  Code,
+  Link,
+  Quote,
+  Table,
+  Minus,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 
 interface MarkdownToolbarProps {
   className?: string;
+  onInsertValue?: (value: string) => void;
 }
 
-export function MarkdownToolbar({ className = '' }: MarkdownToolbarProps) {
+export function MarkdownToolbar({ className = '', onInsertValue }: MarkdownToolbarProps) {
   const { 
     config, 
     tabs, 
@@ -112,6 +124,15 @@ export function MarkdownToolbar({ className = '' }: MarkdownToolbarProps) {
       console.error('Failed to toggle fullscreen:', err);
     }
   }, []);
+
+  // Insert value handler for formatting buttons
+  const handleInsertValue = useCallback((value: string) => {
+    if (onInsertValue) {
+      onInsertValue(value);
+    }
+  }, [onInsertValue]);
+
+  const hasActiveTab = !!activeTab;
   
   return (
     <div className={`flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 ${className}`}>
@@ -130,7 +151,77 @@ export function MarkdownToolbar({ className = '' }: MarkdownToolbarProps) {
         icon={<Save size={16} />} 
         tooltip="Save (Ctrl+S)"
         onClick={handleSaveFile}
-        disabled={!activeTab}
+        disabled={!hasActiveTab}
+      />
+      
+      <ToolbarDivider />
+      
+      {/* Format operations */}
+      <ToolbarButton 
+        icon={<Heading1 size={16} />} 
+        tooltip="Heading 1"
+        onClick={() => handleInsertValue('# ')}
+        disabled={!hasActiveTab}
+      />
+      <ToolbarButton 
+        icon={<Heading2 size={16} />} 
+        tooltip="Heading 2"
+        onClick={() => handleInsertValue('## ')}
+        disabled={!hasActiveTab}
+      />
+      <ToolbarButton 
+        icon={<Bold size={16} />} 
+        tooltip="Bold"
+        onClick={() => handleInsertValue('**bold**')}
+        disabled={!hasActiveTab}
+      />
+      <ToolbarButton 
+        icon={<Italic size={16} />} 
+        tooltip="Italic"
+        onClick={() => handleInsertValue('*italic*')}
+        disabled={!hasActiveTab}
+      />
+      <ToolbarButton 
+        icon={<List size={16} />} 
+        tooltip="Bullet List"
+        onClick={() => handleInsertValue('- ')}
+        disabled={!hasActiveTab}
+      />
+      <ToolbarButton 
+        icon={<ListOrdered size={16} />} 
+        tooltip="Numbered List"
+        onClick={() => handleInsertValue('1. ')}
+        disabled={!hasActiveTab}
+      />
+      <ToolbarButton 
+        icon={<Code size={16} />} 
+        tooltip="Code Block"
+        onClick={() => handleInsertValue('```\n\n```')}
+        disabled={!hasActiveTab}
+      />
+      <ToolbarButton 
+        icon={<Link size={16} />} 
+        tooltip="Link"
+        onClick={() => handleInsertValue('[text](url)')}
+        disabled={!hasActiveTab}
+      />
+      <ToolbarButton 
+        icon={<Quote size={16} />} 
+        tooltip="Quote"
+        onClick={() => handleInsertValue('> ')}
+        disabled={!hasActiveTab}
+      />
+      <ToolbarButton 
+        icon={<Table size={16} />} 
+        tooltip="Table"
+        onClick={() => handleInsertValue('| Header 1 | Header 2 |\n| -------- | -------- |\n| Cell 1   | Cell 2   |')}
+        disabled={!hasActiveTab}
+      />
+      <ToolbarButton 
+        icon={<Minus size={16} />} 
+        tooltip="Horizontal Rule"
+        onClick={() => handleInsertValue('\n---\n')}
+        disabled={!hasActiveTab}
       />
       
       <ToolbarDivider />

@@ -7,6 +7,7 @@ export interface VditorEditorRef {
   focus: () => void;
   getValue: () => string;
   setValue: (value: string) => void;
+  insertValue: (value: string) => void;
   getStats: () => { chars: number; words: number; lines: number };
 }
 
@@ -54,28 +55,7 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
       input: (value: string) => {
         setContent(value);
       },
-      toolbar: [
-        'headings',
-        'bold',
-        'italic',
-        'strike',
-        '|',
-        'line',
-        'quote',
-        'list',
-        'ordered-list',
-        'check',
-        '|',
-        'code',
-        'inline-code',
-        'link',
-        'table',
-        '|',
-        'undo',
-        'redo',
-        '|',
-        'fullscreen',
-      ],
+      toolbar: [],
       outline: { enable: true, position: 'right' },
       // Fix: customWysiwygToolbar must be a function
       customWysiwygToolbar: () => [],
@@ -138,10 +118,7 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
         input: (value: string) => {
           setContent(value);
         },
-        toolbar: [
-          'headings', 'bold', 'italic', 'strike', '|', 'line', 'quote', 'list', 'ordered-list', 'check', '|',
-          'code', 'inline-code', 'link', 'table', '|', 'undo', 'redo', '|', 'fullscreen',
-        ],
+        toolbar: [],
       });
       isVditorReady.current = true;
     } catch (e) {
@@ -171,6 +148,9 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
     },
     setValue: (value: string) => {
       vditorRef.current?.setValue(value);
+    },
+    insertValue: (value: string) => {
+      vditorRef.current?.insertValue(value);
     },
     getStats: () => {
       const value = vditorRef.current?.getValue() || '';

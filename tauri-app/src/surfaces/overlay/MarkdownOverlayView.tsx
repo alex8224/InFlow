@@ -5,7 +5,7 @@ import { X, Minus, Square, Maximize2, Pin, PinOff } from 'lucide-react';
 import { getAppConfig, AppConfig, updateAppConfig } from '../../integrations/tauri/api';
 import { useInvocationStore } from '../../stores/invocationStore';
 import { useMarkdownStore } from '../../stores/markdownStore';
-import { VditorEditor } from '../../components/markdown/VditorEditor';
+import { VditorEditor, VditorEditorRef } from '../../components/markdown/VditorEditor';
 import { MarkdownToolbar } from '../../components/markdown/MarkdownToolbar';
 import { MarkdownTabBar } from '../../components/markdown/MarkdownTabBar';
 import { MarkdownStatusBar } from '../../components/markdown/MarkdownStatusBar';
@@ -16,6 +16,7 @@ export function MarkdownOverlayView() {
   const [isPinned, setIsPinned] = useState(false);
   
   const configRef = useRef<AppConfig | null>(null);
+  const vditorRef = useRef<VditorEditorRef>(null);
   
   const { tabs, addTab, loadFile, setConfig: setMarkdownConfig } = useMarkdownStore();
   
@@ -216,12 +217,14 @@ export function MarkdownOverlayView() {
       <MarkdownTabBar />
       
       {/* Toolbar */}
-      <MarkdownToolbar />
+      <MarkdownToolbar 
+        onInsertValue={(value) => vditorRef.current?.insertValue(value)}
+      />
       
       {/* Editor area */}
       <div className="flex-1 overflow-hidden">
         {hasOpenTabs ? (
-          <VditorEditor />
+          <VditorEditor ref={vditorRef} />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
             <p className="mb-4">No file open</p>
