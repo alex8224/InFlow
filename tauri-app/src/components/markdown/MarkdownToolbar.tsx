@@ -7,6 +7,7 @@ import {
   Sun,
   Moon,
   Maximize2,
+  ListTree,
   Heading1,
   Heading2,
   Bold,
@@ -32,6 +33,7 @@ export function MarkdownToolbar({ className = '', onInsertValue }: MarkdownToolb
     tabs, 
     activeTabId,
     setTheme, 
+    toggleOutline,
     addTab,
     updateTab,
     getActiveTab,
@@ -97,6 +99,10 @@ export function MarkdownToolbar({ className = '', onInsertValue }: MarkdownToolb
   const handleThemeToggle = useCallback(() => {
     setTheme(config.theme === 'dark' ? 'light' : 'dark');
   }, [config.theme, setTheme]);
+
+  const handleOutlineToggle = useCallback(() => {
+    toggleOutline();
+  }, [toggleOutline]);
 
   const handleFullscreen = useCallback(async () => {
     try {
@@ -212,6 +218,14 @@ export function MarkdownToolbar({ className = '', onInsertValue }: MarkdownToolb
         icon={config.theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         tooltip={`Switch to ${config.theme === 'dark' ? 'Light' : 'Dark'} Theme`}
         onClick={handleThemeToggle}
+      />
+
+      <ToolbarButton
+        icon={<ListTree size={16} />}
+        tooltip={config.outlineEnabled ? 'Hide Outline' : 'Show Outline'}
+        onClick={handleOutlineToggle}
+        disabled={!hasActiveTab}
+        active={config.outlineEnabled}
       />
       
 

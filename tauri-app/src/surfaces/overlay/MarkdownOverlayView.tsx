@@ -94,6 +94,9 @@ export function MarkdownOverlayView() {
       if (data.markdownEditorAutoSave !== undefined && data.markdownEditorAutoSave !== null) {
         setMarkdownConfig({ autoSave: data.markdownEditorAutoSave });
       }
+      if (data.markdownEditorOutlineEnabled !== undefined && data.markdownEditorOutlineEnabled !== null) {
+        setMarkdownConfig({ outlineEnabled: data.markdownEditorOutlineEnabled });
+      }
       if (data.markdownEditorRecentFiles) {
         setMarkdownConfig({ recentFiles: data.markdownEditorRecentFiles });
       }
@@ -115,6 +118,7 @@ export function MarkdownOverlayView() {
         markdownEditorTheme: markdownConfig.theme,
         markdownEditorFontSize: markdownConfig.fontSize,
         markdownEditorAutoSave: markdownConfig.autoSave,
+        markdownEditorOutlineEnabled: markdownConfig.outlineEnabled,
         markdownEditorRecentFiles: markdownConfig.recentFiles,
       });
     } catch (err) {

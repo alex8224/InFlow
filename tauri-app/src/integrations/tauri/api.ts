@@ -33,6 +33,7 @@ export interface AppConfig {
   markdownEditorTheme?: string | null;
   markdownEditorFontSize?: number | null;
   markdownEditorAutoSave?: boolean | null;
+  markdownEditorOutlineEnabled?: boolean | null;
   markdownEditorRecentFiles?: string[] | null;
 }
 

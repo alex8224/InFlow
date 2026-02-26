@@ -23,6 +23,7 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
   const lastEditorValueRef = useRef<string>('');
   const currentModeRef = useRef<'ir' | 'sv'>('ir');
   const currentLargeRef = useRef(false);
+  const currentOutlineRef = useRef(false);
 
   // Large markdown optimization: Vditor's IR/WYSIWYG modes maintain a large editable DOM,
   // which becomes very slow for big documents. We downgrade to `sv` (source mode) and
@@ -31,6 +32,7 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
   
   const activeTabId = useMarkdownStore((state) => state.activeTabId);
   const theme = useMarkdownStore((state) => state.config.theme);
+  const outlineEnabled = useMarkdownStore((state) => state.config.outlineEnabled);
   const setContent = useMarkdownStore((state) => state.setContent);
 
   const activeContent = useMemo(() => {
@@ -86,7 +88,7 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
     isVditorReady.current = false;
   };
 
-  const createVditor = (value: string, mode: 'ir' | 'sv', largeDoc: boolean) => {
+  const createVditor = (value: string, mode: 'ir' | 'sv', largeDoc: boolean, enableOutline: boolean) => {
     const host = containerRef.current;
     if (!host) return;
 
@@ -100,7 +102,7 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
       bottom: 32,
       placeholder: 'Start typing markdown...',
       toolbar: [],
-      outline: { enable: false, position: 'right' },
+      outline: { enable: enableOutline, position: 'right' },
       // Avoid localStorage cache: it can restore stale content and adds overhead.
       cache: { enable: false },
       input: (nextValue: string) => {
@@ -144,6 +146,7 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
     lastEditorValueRef.current = value;
     currentModeRef.current = mode;
     currentLargeRef.current = largeDoc;
+    currentOutlineRef.current = enableOutline;
   };
 
   // (Re)create Vditor when switching between small/large docs.
@@ -151,16 +154,18 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
     if (!containerRef.current) return;
 
     const desiredMode: 'ir' | 'sv' = isLargeDoc ? 'sv' : 'ir';
+    const desiredOutlineEnabled = outlineEnabled && !isLargeDoc;
     const needsRecreate =
       !vditorRef.current ||
       !isVditorReady.current ||
       desiredMode !== currentModeRef.current ||
-      isLargeDoc !== currentLargeRef.current;
+      isLargeDoc !== currentLargeRef.current ||
+      desiredOutlineEnabled !== currentOutlineRef.current;
 
     if (needsRecreate) {
       destroyVditor();
       const initialValue = isLargeDoc ? '' : activeContent;
-      createVditor(initialValue, desiredMode, isLargeDoc);
+      createVditor(initialValue, desiredMode, isLargeDoc, desiredOutlineEnabled);
 
       // Applying a very large document can block the UI thread. Defer it so the
       // loading overlay can paint first.
@@ -206,7 +211,7 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
     } catch (e) {
       console.warn('Vditor setValue failed:', e);
     }
-  }, [activeTabId, isLargeDoc]);
+  }, [activeTabId, isLargeDoc, outlineEnabled]);
 
   // Cleanup on unmount
   useEffect(() => {

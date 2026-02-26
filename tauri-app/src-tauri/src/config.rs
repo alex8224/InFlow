@@ -65,6 +65,7 @@ pub struct AppConfig {
     pub markdown_editor_theme: Option<String>, // "light" or "dark"
     pub markdown_editor_font_size: Option<u32>, // 12-24
     pub markdown_editor_auto_save: Option<bool>,
+    pub markdown_editor_outline_enabled: Option<bool>,
     pub markdown_editor_recent_files: Option<Vec<String>>, // recent opened files
 }
 
@@ -229,6 +230,7 @@ impl AppConfig {
             markdown_editor_theme: Some("light".to_string()),
             markdown_editor_font_size: Some(14),
             markdown_editor_auto_save: Some(false),
+            markdown_editor_outline_enabled: Some(false),
             markdown_editor_recent_files: Some(Vec::new()),
         }
     }

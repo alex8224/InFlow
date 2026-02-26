@@ -23,6 +23,7 @@ export interface MarkdownEditorConfig {
   fontSize: number;
   autoSave: boolean;
   recentFiles: string[];
+  outlineEnabled: boolean;
   activeTabId: string | null;
 }
 
@@ -54,6 +55,7 @@ type MarkdownStore = {
   setTheme: (theme: EditorTheme) => void;
   setFontSize: (fontSize: number) => void;
   toggleAutoSave: () => void;
+  toggleOutline: () => void;
   addRecentFile: (filePath: string) => void;
   
   // Actions - Tabs
@@ -89,6 +91,7 @@ export const useMarkdownStore = create<MarkdownStore>((set, get) => ({
     fontSize: 14,
     autoSave: false,
     recentFiles: [],
+    outlineEnabled: false,
     activeTabId: null,
   },
   
@@ -113,6 +116,10 @@ export const useMarkdownStore = create<MarkdownStore>((set, get) => ({
   
   toggleAutoSave: () => set((state) => ({
     config: { ...state.config, autoSave: !state.config.autoSave }
+  })),
+
+  toggleOutline: () => set((state) => ({
+    config: { ...state.config, outlineEnabled: !state.config.outlineEnabled }
   })),
   
   addRecentFile: (filePath) => set((state) => {
