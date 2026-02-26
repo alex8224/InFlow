@@ -81,6 +81,8 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
         'fullscreen',
       ],
       outline: { enable: true, position: 'right' },
+      // Fix: customWysiwygToolbar must be a function
+      customWysiwygToolbar: () => [],
       preview: {
         markdown: {
           toc: true,
