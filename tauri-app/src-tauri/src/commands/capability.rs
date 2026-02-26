@@ -20,7 +20,12 @@ fn resolve_mode(
             .unwrap_or_else(|| capability.ui_policy.default_mode.clone());
 
         if capability.ui_policy.allowed_modes.contains(&mode) {
-            return Ok(mode);
+            // Normalize mode: map edit/preview to overlay for windowing
+            let normalized = match mode.as_str() {
+                "edit" | "preview" => "overlay".to_string(),
+                _ => mode,
+            };
+            return Ok(normalized);
         }
 
         if request_version == "legacy" && mode.is_empty() {

@@ -41,6 +41,7 @@ pub fn run() {
             tray: Mutex::new(None),
         })
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if args.len() > 1 {
@@ -164,6 +165,11 @@ pub fn run() {
             share::chat_share_create,
             share::get_share_server_port,
             action_predict::predict_actions,
+            markdown::open_markdown_file,
+            markdown::save_markdown_file,
+            markdown::save_markdown_file_as,
+            markdown::read_markdown_file,
+            markdown::toggle_overlay_fullscreen,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

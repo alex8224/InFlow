@@ -60,6 +60,12 @@ pub struct AppConfig {
     // Allowed directories for fs tools (readFile, writeFile, listFile, grep).
     // Example: ["C:\\Users\\Documents", "D:\\Projects"]
     pub fs_allowed_dirs: Option<Vec<String>>,
+
+    // Markdown Editor Overlay settings.
+    pub markdown_editor_theme: Option<String>, // "light" or "dark"
+    pub markdown_editor_font_size: Option<u32>, // 12-24
+    pub markdown_editor_auto_save: Option<bool>,
+    pub markdown_editor_recent_files: Option<Vec<String>>, // recent opened files
 }
 
 impl AppConfig {
@@ -170,6 +176,10 @@ impl AppConfig {
             agent_browser_cli_path: None,
             agent_browser_executable_path: None,
             fs_allowed_dirs: None,
+            markdown_editor_theme: Some("light".to_string()),
+            markdown_editor_font_size: Some(14),
+            markdown_editor_auto_save: Some(false),
+            markdown_editor_recent_files: Some(Vec::new()),
         }
     }
 

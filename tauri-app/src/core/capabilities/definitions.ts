@@ -61,6 +61,30 @@ export const capabilityDefinitions: CapabilityDefinition[] = [
       defaultFocus: true,
     },
   },
+  {
+    id: 'markdown.editor',
+    version: '1.0.0',
+    name: 'Markdown Editor',
+    description: 'Open markdown editor in overlay window.',
+    viewId: 'markdown-overlay-view',
+    uiPolicy: {
+      defaultMode: 'overlay',
+      allowedModes: ['overlay', 'edit', 'preview'],
+      defaultFocus: true,
+    },
+  },
+  {
+    id: 'markdown.open',
+    version: '1.0.0',
+    name: 'Open Markdown File',
+    description: 'Open a markdown file in the editor.',
+    viewId: 'markdown-overlay-view',
+    uiPolicy: {
+      defaultMode: 'overlay',
+      allowedModes: ['overlay'],
+      defaultFocus: true,
+    },
+  },
 ];
 
 const byId = new Map<string, CapabilityDefinition>(

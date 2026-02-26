@@ -29,6 +29,11 @@ export interface AppConfig {
   mcpRemoteServers?: McpRemoteServer[];
   agentBrowserCliPath?: string | null;
   agentBrowserExecutablePath?: string | null;
+  // Markdown Editor config
+  markdownEditorTheme?: string | null;
+  markdownEditorFontSize?: number | null;
+  markdownEditorAutoSave?: boolean | null;
+  markdownEditorRecentFiles?: string[] | null;
 }
 
 export type ToolCatalogItem = {

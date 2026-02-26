@@ -13,6 +13,10 @@ export function WorkspaceSurface() {
     executeCapability('translate.selection', {}, { selectedText: "Hello from Workspace" }, { mode: 'overlay', focus: true });
   };
 
+  const testMarkdownEditor = () => {
+    executeCapability('markdown.editor', {}, {}, { mode: 'overlay', focus: true });
+  };
+
   const navItems = [
     { id: 'overview', name: '总览', icon: LayoutDashboard },
     { id: 'history', name: '任务历史', icon: History },
@@ -42,6 +46,12 @@ export function WorkspaceSurface() {
                   className="bg-primary text-primary-foreground hover:opacity-90 px-4 py-2 rounded-md transition-all shadow-sm font-medium text-sm"
                 >
                   触发翻译 Overlay
+                </button>
+                <button
+                  onClick={testMarkdownEditor}
+                  className="bg-green-600 text-white hover:opacity-90 px-4 py-2 rounded-md transition-all shadow-sm font-medium text-sm"
+                >
+                  触发 Markdown 编辑器
                 </button>
               </div>
             </div>

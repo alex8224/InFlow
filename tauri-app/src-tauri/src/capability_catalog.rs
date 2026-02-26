@@ -81,6 +81,31 @@ pub fn catalog() -> Vec<CapabilityDefinition> {
                 default_focus: true,
             },
         },
+        // Markdown Editor capabilities
+        CapabilityDefinition {
+            id: "markdown.editor".to_string(),
+            version: "1.0.0".to_string(),
+            name: "Markdown Editor".to_string(),
+            description: "Open markdown editor in overlay window.".to_string(),
+            view_id: Some("markdown-overlay-view".to_string()),
+            ui_policy: CapabilityUiPolicy {
+                default_mode: "overlay".to_string(),
+                allowed_modes: vec!["overlay".to_string(), "edit".to_string(), "preview".to_string()],
+                default_focus: true,
+            },
+        },
+        CapabilityDefinition {
+            id: "markdown.open".to_string(),
+            version: "1.0.0".to_string(),
+            name: "Open Markdown File".to_string(),
+            description: "Open a markdown file in the editor.".to_string(),
+            view_id: Some("markdown-overlay-view".to_string()),
+            ui_policy: CapabilityUiPolicy {
+                default_mode: "overlay".to_string(),
+                allowed_modes: vec!["overlay".to_string()],
+                default_focus: true,
+            },
+        },
     ]
 }
 

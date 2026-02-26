@@ -9,6 +9,7 @@ import { TranslateView } from '../surfaces/overlay/TranslateView';
 import { ChatOverlayView } from '../surfaces/overlay/ChatOverlayView';
 import { ActionPredictView } from '../surfaces/overlay/ActionPredictView';
 import { SettingsView } from '../surfaces/workspace/SettingsView';
+import { MarkdownOverlayView } from '../surfaces/overlay/MarkdownOverlayView';
 
 export async function setupEventListeners() {
   const currentWindow = getCurrentWindow();
@@ -80,6 +81,15 @@ export async function bootstrap() {
       name: 'Action Predict',
       component: ActionPredictView,
       capabilityIds: getCapabilityIdsByView('action-predict-view'),
+    });
+  }
+
+  if (!viewRegistry.has('markdown-overlay-view')) {
+    viewRegistry.register({
+      id: 'markdown-overlay-view',
+      name: 'Markdown Editor',
+      component: MarkdownOverlayView,
+      capabilityIds: getCapabilityIdsByView('markdown-overlay-view'),
     });
   }
 

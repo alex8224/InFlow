@@ -23,6 +23,8 @@ pub fn resolve_target_window(
             "translate" => "translate".to_string(),
             "chat" => "chat".to_string(),
             "overlay" => "overlay".to_string(),
+            "edit" => "overlay".to_string(),      // Markdown edit mode -> overlay window
+            "preview" => "overlay".to_string(),    // Markdown preview mode -> overlay window
             "pet" => "pet".to_string(),
             "main" => "main".to_string(),
             "action-predict" => "action-predict".to_string(),
