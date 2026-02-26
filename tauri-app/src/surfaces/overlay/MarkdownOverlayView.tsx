@@ -122,19 +122,20 @@ export function MarkdownOverlayView() {
   const hasOpenTabs = tabs.length > 0;
   
   return (
-    <div className="flex flex-col h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    <div className="flex flex-col h-full min-h-0 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       {/* Tab bar */}
-      <MarkdownTabBar />
+      <MarkdownTabBar className="shrink-0" />
       
       {/* Toolbar */}
-      <MarkdownToolbar 
+      <MarkdownToolbar
+        className="shrink-0"
         onInsertValue={(value) => vditorRef.current?.insertValue(value)}
       />
       
       {/* Editor area */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden">
         {hasOpenTabs ? (
-          <VditorEditor ref={vditorRef} />
+          <VditorEditor ref={vditorRef} className="min-h-0" />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
             <p className="mb-4">No file open</p>
@@ -144,7 +145,7 @@ export function MarkdownOverlayView() {
       </div>
       
       {/* Status bar */}
-      <MarkdownStatusBar />
+      <MarkdownStatusBar className="shrink-0" />
     </div>
   );
 }

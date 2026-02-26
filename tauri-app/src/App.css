@@ -8,6 +8,32 @@
   max-width: 100% !important;
 }
 
+/*
+  Vditor inside a flex column layout: ensure it can shrink and the last lines
+  are not visually covered by bottom bars (app status bar / vditor UI).
+*/
+#vditor {
+  min-height: 0;
+}
+
+#vditor .vditor-content {
+  min-height: 0;
+}
+
+#vditor .vditor-ir,
+#vditor .vditor-wysiwyg,
+#vditor .vditor-preview {
+  padding-bottom: 44px;
+  box-sizing: border-box;
+}
+
+/* Mermaid diagrams can overlay the editable surface in IR mode.
+   Make them non-interactive so clicks focus the editor as expected. */
+#vditor .vditor-ir .mermaid,
+#vditor .vditor-ir .mermaid * {
+  pointer-events: none;
+}
+
 .logo.vite:hover {
   filter: drop-shadow(0 0 2em #747bff);
 }

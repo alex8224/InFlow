@@ -308,6 +308,7 @@ export function OverlaySurface() {
   const isChat = capabilityViewId === "chat-overlay-view";
   const isTranslate = capabilityViewId === "translate-view";
   const isActionPredict = capabilityViewId === "action-predict-view";
+  const isMarkdown = capabilityViewId === "markdown-overlay-view";
 
   useEffect(() => {
     if (!isChat) return;
@@ -601,7 +602,7 @@ export function OverlaySurface() {
 
         <footer className={cn(
           "px-6 h-10 bg-muted/30 border-t border-border/40 flex justify-between items-center shrink-0 select-none",
-          (isChat || isActionPredict) && "hidden"
+          (isChat || isActionPredict || isMarkdown) && "hidden"
         )}>
           <div className="flex items-center gap-2.5">
             <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_12px_rgba(34,197,94,0.8)] animate-pulse" />

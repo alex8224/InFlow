@@ -97,7 +97,7 @@ export function MarkdownToolbar({ className = '', onInsertValue }: MarkdownToolb
   const handleThemeToggle = useCallback(() => {
     setTheme(config.theme === 'dark' ? 'light' : 'dark');
   }, [config.theme, setTheme]);
-  
+
   const handleFullscreen = useCallback(async () => {
     try {
       await invoke('toggle_overlay_fullscreen');
@@ -105,7 +105,7 @@ export function MarkdownToolbar({ className = '', onInsertValue }: MarkdownToolb
       console.error('Failed to toggle fullscreen:', err);
     }
   }, []);
-
+  
   // Insert value handler for formatting buttons
   const handleInsertValue = useCallback((value: string) => {
     if (onInsertValue) {
