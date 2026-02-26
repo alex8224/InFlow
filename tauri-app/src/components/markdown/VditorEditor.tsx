@@ -74,10 +74,6 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
         'undo',
         'redo',
         '|',
-        'preview',
-        'edit',
-        'wysiwym',
-        '|',
         'fullscreen',
       ],
       outline: { enable: true, position: 'right' },
@@ -144,7 +140,7 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
         },
         toolbar: [
           'headings', 'bold', 'italic', 'strike', '|', 'line', 'quote', 'list', 'ordered-list', 'check', '|',
-          'code', 'inline-code', 'link', 'table', '|', 'undo', 'redo', '|', 'preview', 'edit', 'wysiwym', '|', 'fullscreen',
+          'code', 'inline-code', 'link', 'table', '|', 'undo', 'redo', '|', 'fullscreen',
         ],
       });
       isVditorReady.current = true;
