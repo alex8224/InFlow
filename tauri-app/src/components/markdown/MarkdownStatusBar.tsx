@@ -23,12 +23,6 @@ export function MarkdownStatusBar({ className = '' }: MarkdownStatusBarProps) {
     return { chars, words, lines };
   }, [activeTab?.content]);
   
-  // Mode display text
-  const modeText = {
-    edit: 'Edit',
-    preview: 'Preview',
-  }[config.mode];
-  
   return (
     <div className={`flex items-center justify-between px-3 py-1 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 text-xs ${className}`}>
       {/* Left section - File info */}
@@ -76,7 +70,6 @@ export function MarkdownStatusBar({ className = '' }: MarkdownStatusBarProps) {
         <span>{stats.words} words</span>
         <span>{stats.chars} chars</span>
         <span>{stats.lines} lines</span>
-        <span className="capitalize">{modeText}</span>
         <span className="uppercase">{config.theme}</span>
       </div>
     </div>

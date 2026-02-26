@@ -1,3 +1,13 @@
+/* Preview-only mode: hide the editor pane, show only preview */
+.vditor-preview-only .vditor-editor {
+  display: none !important;
+}
+
+.vditor-preview-only .vditor-preview {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
 .logo.vite:hover {
   filter: drop-shadow(0 0 2em #747bff);
 }

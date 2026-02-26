@@ -53,7 +53,6 @@ export function MarkdownOverlayView() {
   useEffect(() => {
     if (currentInvocation?.args) {
       const args = currentInvocation.args;
-      const mode = args.mode as string | undefined;
       const file = args.file as string | undefined;
       const content = args.content as string | undefined;
       const action = args.action as string | undefined;
@@ -63,12 +62,8 @@ export function MarkdownOverlayView() {
       } else if (file && content) {
         loadFile(file, content);
       }
-      
-      if (mode) {
-        setMarkdownConfig({ mode: mode as 'edit' | 'preview' });
-      }
     }
-  }, [currentInvocation, addTab, loadFile, setMarkdownConfig]);
+  }, [currentInvocation, addTab, loadFile]);
   
   const loadConfig = async () => {
     try {

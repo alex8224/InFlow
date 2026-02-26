@@ -6,8 +6,6 @@ import {
   Save,
   Sun,
   Moon,
-  Edit3,
-  Eye,
   Maximize2,
   Heading1,
   Heading2,
@@ -33,7 +31,6 @@ export function MarkdownToolbar({ className = '', onInsertValue }: MarkdownToolb
     config, 
     tabs, 
     activeTabId,
-    toggleReadonly,
     setTheme, 
     addTab,
     updateTab,
@@ -96,10 +93,6 @@ export function MarkdownToolbar({ className = '', onInsertValue }: MarkdownToolb
       console.error('Failed to save file:', err);
     }
   }, [getActiveTab, updateTab, markSaved]);
-  
-  const handleToggleReadonly = useCallback(() => {
-    toggleReadonly();
-  }, [toggleReadonly]);
   
   const handleThemeToggle = useCallback(() => {
     setTheme(config.theme === 'dark' ? 'light' : 'dark');
@@ -210,16 +203,6 @@ export function MarkdownToolbar({ className = '', onInsertValue }: MarkdownToolb
         tooltip="Horizontal Rule"
         onClick={() => handleInsertValue('\n---\n')}
         disabled={!hasActiveTab}
-      />
-      
-      <ToolbarDivider />
-      
-      {/* Mode switch */}
-      <ToolbarButton 
-        icon={config.readonly ? <Eye size={16} /> : <Edit3 size={16} />} 
-        tooltip={config.readonly ? 'Read-only (Click to edit)' : 'Editing (Click to read-only)'}
-        active={config.readonly}
-        onClick={handleToggleReadonly}
       />
       
       <ToolbarDivider />
