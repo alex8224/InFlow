@@ -65,7 +65,7 @@ export function MarkdownOverlayView() {
       }
       
       if (mode) {
-        setMarkdownConfig({ mode: mode as 'edit' | 'preview' | 'wysiwym' });
+        setMarkdownConfig({ mode: mode as 'edit' | 'preview' });
       }
     }
   }, [currentInvocation, addTab, loadFile, setMarkdownConfig]);

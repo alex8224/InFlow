@@ -15,19 +15,19 @@ interface VditorEditorProps {
   className?: string;
 }
 
-// Vditor mode mapping: 'ir'=edit, 'wysiwym'=wysiwyg, 'sv'=preview
+// Vditor mode mapping: 'ir'=edit, 'sv'=preview (readonly)
 type VditorMode = 'ir' | 'wysiwyg' | 'sv';
 
 function toVditorMode(mode: string): VditorMode {
   const map: Record<string, VditorMode> = {
     'edit': 'ir',
-    'wysiwym': 'wysiwyg',
     'preview': 'sv'
   };
   return map[mode] || 'ir';
 }
 
-export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(function VditorEditor({ className = '' }, ref) {
+export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(function VditorEditor(props, ref) {
+  const { className = '' } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const vditorRef = useRef<Vditor | null>(null);
   const isVditorReady = useRef(false);
@@ -46,28 +46,34 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
   useEffect(() => {
     if (!containerRef.current) return;
     
+    const vditorMode = toVditorMode(config.mode);
+    const isReadonly = config.readonly;
+    
     const vditor = new Vditor('vditor', {
       value: content,
-      mode: toVditorMode(config.mode),
+      mode: vditorMode,
       theme: config.theme === 'dark' ? 'dark' : 'classic',
       height: '100%',
       placeholder: 'Start typing markdown...',
       input: (value: string) => {
-        setContent(value);
+        if (!isReadonly) {
+          setContent(value);
+        }
       },
       toolbar: [],
-      outline: { enable: true, position: 'right' },
-      // Fix: customWysiwygToolbar must be a function
-      customWysiwygToolbar: () => [],
+      outline: { enable: false, position: 'right' },
       preview: {
+        mode: 'editor',
         markdown: {
           toc: true,
-        },
-        math: {
-          engine: 'KaTeX',
-        },
+        }
       },
     });
+    
+    // Set initial readonly state
+    if (isReadonly) {
+      vditor.disabled();
+    }
     
     vditorRef.current = vditor;
     isVditorReady.current = true;
@@ -101,13 +107,15 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
     }
   }, [activeTabId, content]);
 
-  // Update mode when config changes
+  // Update mode/readonly when config changes
   useEffect(() => {
     const vditor = vditorRef.current;
     if (!isVditorReady.current || !vditor) return;
     
     try {
       const vditorMode = toVditorMode(config.mode);
+      const isReadonly = config.readonly;
+      
       // Recreate editor with new mode
       vditor.destroy();
       vditorRef.current = new Vditor('vditor', {
@@ -116,15 +124,29 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
         theme: config.theme === 'dark' ? 'dark' : 'classic',
         height: '100%',
         input: (value: string) => {
-          setContent(value);
+          if (!isReadonly) {
+            setContent(value);
+          }
         },
         toolbar: [],
+        outline: { enable: false, position: 'right' },
+        preview: {
+          mode: 'editor',
+          markdown: {
+            toc: true,
+          }
+        },
       });
+      
+      // Apply readonly state
+      if (isReadonly) {
+        vditorRef.current.disabled();
+      }
       isVditorReady.current = true;
     } catch (e) {
       console.warn('Vditor mode change failed:', e);
     }
-  }, [config.mode, config.theme, content, setContent]);
+  }, [config.mode, config.readonly, config.theme, content, setContent]);
 
   // Update theme
   useEffect(() => {

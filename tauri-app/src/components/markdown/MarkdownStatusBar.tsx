@@ -26,7 +26,6 @@ export function MarkdownStatusBar({ className = '' }: MarkdownStatusBarProps) {
   // Mode display text
   const modeText = {
     edit: 'Edit',
-    wysiwym: 'WYSIWYG',
     preview: 'Preview',
   }[config.mode];
   

@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { useMarkdownStore, EditorMode } from '../../stores/markdownStore';
+import { useMarkdownStore } from '../../stores/markdownStore';
 import {
   FilePlus,
   FolderOpen,
@@ -9,7 +9,6 @@ import {
   Edit3,
   Eye,
   Maximize2,
-  FileText,
   Heading1,
   Heading2,
   Bold,
@@ -34,7 +33,7 @@ export function MarkdownToolbar({ className = '', onInsertValue }: MarkdownToolb
     config, 
     tabs, 
     activeTabId,
-    setMode, 
+    toggleReadonly,
     setTheme, 
     addTab,
     updateTab,
@@ -98,9 +97,9 @@ export function MarkdownToolbar({ className = '', onInsertValue }: MarkdownToolb
     }
   }, [getActiveTab, updateTab, markSaved]);
   
-  const handleModeChange = useCallback((mode: EditorMode) => {
-    setMode(mode);
-  }, [setMode]);
+  const handleToggleReadonly = useCallback(() => {
+    toggleReadonly();
+  }, [toggleReadonly]);
   
   const handleThemeToggle = useCallback(() => {
     setTheme(config.theme === 'dark' ? 'light' : 'dark');
@@ -217,22 +216,10 @@ export function MarkdownToolbar({ className = '', onInsertValue }: MarkdownToolb
       
       {/* Mode switch */}
       <ToolbarButton 
-        icon={<Edit3 size={16} />} 
-        tooltip="Edit Mode"
-        active={config.mode === 'edit'}
-        onClick={() => handleModeChange('edit')}
-      />
-      <ToolbarButton 
-        icon={<Eye size={16} />} 
-        tooltip="WYSIWYG Mode"
-        active={config.mode === 'wysiwym'}
-        onClick={() => handleModeChange('wysiwym')}
-      />
-      <ToolbarButton 
-        icon={<FileText size={16} />} 
-        tooltip="Preview Mode"
-        active={config.mode === 'preview'}
-        onClick={() => handleModeChange('preview')}
+        icon={config.readonly ? <Eye size={16} /> : <Edit3 size={16} />} 
+        tooltip={config.readonly ? 'Read-only (Click to edit)' : 'Editing (Click to read-only)'}
+        active={config.readonly}
+        onClick={handleToggleReadonly}
       />
       
       <ToolbarDivider />

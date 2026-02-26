@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type EditorMode = 'edit' | 'preview' | 'wysiwym';
+export type EditorMode = 'edit' | 'preview';
 export type EditorTheme = 'light' | 'dark';
 
 export interface MarkdownTab {
@@ -20,6 +20,7 @@ export interface MarkdownStats {
 
 export interface MarkdownEditorConfig {
   mode: EditorMode;
+  readonly: boolean;
   theme: EditorTheme;
   fontSize: number;
   autoSave: boolean;
@@ -42,6 +43,8 @@ type MarkdownStore = {
   // Actions - Config
   setConfig: (config: Partial<MarkdownEditorConfig>) => void;
   setMode: (mode: EditorMode) => void;
+  setReadonly: (readonly: boolean) => void;
+  toggleReadonly: () => void;
   setTheme: (theme: EditorTheme) => void;
   setFontSize: (fontSize: number) => void;
   toggleAutoSave: () => void;
@@ -76,6 +79,7 @@ export const useMarkdownStore = create<MarkdownStore>((set, get) => ({
   // Initial state
   config: {
     mode: 'edit',
+    readonly: false,
     theme: 'light',
     fontSize: 14,
     autoSave: false,
@@ -96,7 +100,15 @@ export const useMarkdownStore = create<MarkdownStore>((set, get) => ({
   setMode: (mode) => set((state) => ({
     config: { ...state.config, mode }
   })),
-  
+
+  setReadonly: (readonly) => set((state) => ({
+    config: { ...state.config, readonly }
+  })),
+
+  toggleReadonly: () => set((state) => ({
+    config: { ...state.config, readonly: !state.config.readonly }
+  })),
+
   setTheme: (theme) => set((state) => ({
     config: { ...state.config, theme }
   })),
