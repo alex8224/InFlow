@@ -54,8 +54,8 @@ export function MarkdownOverlayView() {
       
       if (action === 'new') {
         addTab({ title: 'Untitled', content: '' });
-      } else if (file && content) {
-        loadFile(file, content);
+      } else if (file) {
+        loadFile(file, content || '');
       }
     }
   }, [currentInvocation, addTab, loadFile]);

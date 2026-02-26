@@ -189,38 +189,58 @@ export const useMarkdownStore = create<MarkdownStore>((set, get) => ({
   }),
   
   // File operations
-  loadFile: (filePath, content) => set((state) => {
-    // Check if file is already open
-    const existingTab = state.tabs.find(t => t.filePath === filePath);
-    if (existingTab) {
-      return {
-        activeTabId: existingTab.id,
-        config: { ...state.config, activeTabId: existingTab.id },
-      };
+  loadFile: async (filePath, content) => {
+    // If content is empty, auto-read from file
+    let fileContent = content;
+    if (!fileContent && filePath) {
+      try {
+        const { readMarkdownFile } = await import('../integrations/tauri/api');
+        fileContent = await readMarkdownFile(filePath);
+      } catch (err) {
+        console.error('Failed to read file:', err);
+        fileContent = '';
+      }
     }
     
-    // Extract filename from path
-    const title = filePath.split(/[/\\]/).pop() || 'Untitled';
-    const id = generateId();
-    
-    return {
-      tabs: [...state.tabs, {
-        id,
-        title,
-        filePath,
-        content,
-        isDirty: false,
-        cursorPosition: { line: 1, col: 1 },
-      }],
-      activeTabId: id,
-      config: { 
-        ...state.config, 
+    set((state) => {
+      // Check if file is already open
+      const existingTab = state.tabs.find((t) => t.filePath === filePath);
+      if (existingTab) {
+        return {
+          activeTabId: existingTab.id,
+          config: { ...state.config, activeTabId: existingTab.id },
+        };
+      }
+
+      // Extract filename from path
+      const title = filePath.split(/[/\\]/).pop() || 'Untitled';
+      const id = generateId();
+
+      return {
+        tabs: [
+          ...state.tabs,
+          {
+            id,
+            title,
+            filePath,
+            content: fileContent,
+            isDirty: false,
+            cursorPosition: { line: 1, col: 1 },
+          },
+        ],
         activeTabId: id,
-        recentFiles: [filePath, ...state.config.recentFiles.filter(f => f !== filePath)].slice(0, 10),
-      },
-    };
-  }),
-  
+        config: {
+          ...state.config,
+          activeTabId: id,
+          recentFiles: [
+            filePath,
+            ...state.config.recentFiles.filter((f) => f !== filePath),
+          ].slice(0, 10),
+        },
+      };
+    });
+  },
+   
   markSaved: (tabId) => set((state) => ({
     tabs: state.tabs.map(t => 
       t.id === tabId ? { ...t, isDirty: false } : t

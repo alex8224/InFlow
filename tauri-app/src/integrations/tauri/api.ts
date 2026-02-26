@@ -193,6 +193,10 @@ export async function readLocalFileDataUrl(path: string): Promise<string | null>
   return await invoke('read_local_file_data_url', { path });
 }
 
+export async function readMarkdownFile(path: string): Promise<string> {
+  return await invoke('read_markdown_file', { path });
+}
+
 export async function translateText(
   text: string,
   fromLang: string,
