@@ -1,0 +1,306 @@
+VditorEditor.tsx:115  Vditor not ready: TypeError: Cannot read properties of undefined (reading 'currentMode')
+    at getMarkdown (index.js:4885:16)
+    at Vditor2.getValue (index.js:15594:16)
+    at VditorEditor.tsx:110:48
+    at Object.react_stack_bottom_frame (react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (react-dom-client.development.js:871:30)
+    at commitHookEffectListMount (react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (react-dom-client.development.js:15439:11)
+    at commitPassiveMountOnFiber (react-dom-client.development.js:15718:11)
+(匿名) @ VditorEditor.tsx:115
+react_stack_bottom_frame @ react-dom-client.development.js:25989
+runWithFiberInDEV @ react-dom-client.development.js:871
+commitHookEffectListMount @ react-dom-client.development.js:13249
+commitHookPassiveMountEffects @ react-dom-client.development.js:13336
+commitPassiveMountOnFiber @ react-dom-client.development.js:15484
+recursivelyTraversePassiveMountEffects @ react-dom-client.development.js:15439
+commitPassiveMountOnFiber @ react-dom-client.development.js:15718
+recursivelyTraversePassiveMountEffects @ react-dom-client.development.js:15439
+commitPassiveMountOnFiber @ react-dom-client.development.js:15718
+recursivelyTraversePassiveMountEffects @ react-dom-client.development.js:15439
+commitPassiveMountOnFiber @ react-dom-client.development.js:15476
+recursivelyTraversePassiveMountEffects @ react-dom-client.development.js:15439
+commitPassiveMountOnFiber @ react-dom-client.development.js:15718
+recursivelyTraversePassiveMountEffects @ react-dom-client.development.js:15439
+commitPassiveMountOnFiber @ react-dom-client.development.js:15718
+recursivelyTraversePassiveMountEffects @ react-dom-client.development.js:15439
+commitPassiveMountOnFiber @ react-dom-client.development.js:15718
+recursivelyTraversePassiveMountEffects @ react-dom-client.development.js:15439
+commitPassiveMountOnFiber @ react-dom-client.development.js:15718
+recursivelyTraversePassiveMountEffects @ react-dom-client.development.js:15439
+commitPassiveMountOnFiber @ react-dom-client.development.js:15476
+recursivelyTraversePassiveMountEffects @ react-dom-client.development.js:15439
+commitPassiveMountOnFiber @ react-dom-client.development.js:15476
+recursivelyTraversePassiveMountEffects @ react-dom-client.development.js:15439
+commitPassiveMountOnFiber @ react-dom-client.development.js:15718
+recursivelyTraversePassiveMountEffects @ react-dom-client.development.js:15439
+commitPassiveMountOnFiber @ react-dom-client.development.js:15519
+flushPassiveEffects @ react-dom-client.development.js:18432
+flushPendingEffects @ react-dom-client.development.js:18358
+flushSpawnedWork @ react-dom-client.development.js:18323
+commitRoot @ react-dom-client.development.js:17955
+commitRootWhenReady @ react-dom-client.development.js:16824
+performWorkOnRoot @ react-dom-client.development.js:16722
+performSyncWorkOnRoot @ react-dom-client.development.js:18972
+flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
+processRootScheduleInMicrotask @ react-dom-client.development.js:18853
+(匿名) @ react-dom-client.development.js:18991
+<ForwardRef(VditorEditor2)>
+exports.jsxDEV @ react-jsx-dev-runtime.development.js:335
+MarkdownOverlayView @ MarkdownOverlayView.tsx:224
+react_stack_bottom_frame @ react-dom-client.development.js:25904
+renderWithHooksAgain @ react-dom-client.development.js:7762
+renderWithHooks @ react-dom-client.development.js:7674
+updateFunctionComponent @ react-dom-client.development.js:10166
+beginWork @ react-dom-client.development.js:11778
+runWithFiberInDEV @ react-dom-client.development.js:871
+performUnitOfWork @ react-dom-client.development.js:17641
+workLoopSync @ react-dom-client.development.js:17469
+renderRootSync @ react-dom-client.development.js:17450
+performWorkOnRoot @ react-dom-client.development.js:16504
+performSyncWorkOnRoot @ react-dom-client.development.js:18972
+flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
+processRootScheduleInMicrotask @ react-dom-client.development.js:18853
+(匿名) @ react-dom-client.development.js:18991
+VditorEditor.tsx:115  Vditor not ready: TypeError: Cannot read properties of undefined (reading 'currentMode')
+    at getMarkdown (index.js:4885:16)
+    at Vditor2.getValue (index.js:15594:16)
+    at VditorEditor.tsx:110:48
+    at Object.react_stack_bottom_frame (react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (react-dom-client.development.js:871:30)
+    at commitHookEffectListMount (react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (react-dom-client.development.js:13336:11)
+    at reconnectPassiveEffects (react-dom-client.development.js:15832:11)
+    at doubleInvokeEffectsOnFiber (react-dom-client.development.js:18703:11)
+    at runWithFiberInDEV (react-dom-client.development.js:871:30)
+(匿名) @ VditorEditor.tsx:115
+react_stack_bottom_frame @ react-dom-client.development.js:25989
+runWithFiberInDEV @ react-dom-client.development.js:871
+commitHookEffectListMount @ react-dom-client.development.js:13249
+commitHookPassiveMountEffects @ react-dom-client.development.js:13336
+reconnectPassiveEffects @ react-dom-client.development.js:15832
+doubleInvokeEffectsOnFiber @ react-dom-client.development.js:18703
+runWithFiberInDEV @ react-dom-client.development.js:871
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18667
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+commitDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18712
+flushPassiveEffects @ react-dom-client.development.js:18439
+flushPendingEffects @ react-dom-client.development.js:18358
+flushSpawnedWork @ react-dom-client.development.js:18323
+commitRoot @ react-dom-client.development.js:17955
+commitRootWhenReady @ react-dom-client.development.js:16824
+performWorkOnRoot @ react-dom-client.development.js:16722
+performSyncWorkOnRoot @ react-dom-client.development.js:18972
+flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
+processRootScheduleInMicrotask @ react-dom-client.development.js:18853
+(匿名) @ react-dom-client.development.js:18991
+<ForwardRef(VditorEditor2)>
+exports.jsxDEV @ react-jsx-dev-runtime.development.js:335
+MarkdownOverlayView @ MarkdownOverlayView.tsx:224
+react_stack_bottom_frame @ react-dom-client.development.js:25904
+renderWithHooksAgain @ react-dom-client.development.js:7762
+renderWithHooks @ react-dom-client.development.js:7674
+updateFunctionComponent @ react-dom-client.development.js:10166
+beginWork @ react-dom-client.development.js:11778
+runWithFiberInDEV @ react-dom-client.development.js:871
+performUnitOfWork @ react-dom-client.development.js:17641
+workLoopSync @ react-dom-client.development.js:17469
+renderRootSync @ react-dom-client.development.js:17450
+performWorkOnRoot @ react-dom-client.development.js:16504
+performSyncWorkOnRoot @ react-dom-client.development.js:18972
+flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
+processRootScheduleInMicrotask @ react-dom-client.development.js:18853
+(匿名) @ react-dom-client.development.js:18991
+index.js:15808  Uncaught TypeError: Cannot read properties of undefined (reading 'element')
+    at Vditor2.destroy (index.js:15808:21)
+    at VditorEditor.tsx:99:27
+    at Object.react_stack_bottom_frame (react-dom-client.development.js:26001:13)
+    at runWithFiberInDEV (react-dom-client.development.js:871:30)
+    at commitHookEffectListUnmount (react-dom-client.development.js:13316:17)
+    at commitHookPassiveUnmountEffects (react-dom-client.development.js:13347:11)
+    at disconnectPassiveEffect (react-dom-client.development.js:16216:11)
+    at doubleInvokeEffectsOnFiber (react-dom-client.development.js:18701:11)
+    at runWithFiberInDEV (react-dom-client.development.js:871:30)
+    at recursivelyTraverseAndDoubleInvokeEffectsInDEV (react-dom-client.development.js:18667:17)
+Vditor2.destroy @ index.js:15808
+(匿名) @ VditorEditor.tsx:99
+react_stack_bottom_frame @ react-dom-client.development.js:26001
+runWithFiberInDEV @ react-dom-client.development.js:871
+commitHookEffectListUnmount @ react-dom-client.development.js:13316
+commitHookPassiveUnmountEffects @ react-dom-client.development.js:13347
+disconnectPassiveEffect @ react-dom-client.development.js:16216
+doubleInvokeEffectsOnFiber @ react-dom-client.development.js:18701
+runWithFiberInDEV @ react-dom-client.development.js:871
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18667
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18673
+commitDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18712
+flushPassiveEffects @ react-dom-client.development.js:18439
+flushPendingEffects @ react-dom-client.development.js:18358
+flushSpawnedWork @ react-dom-client.development.js:18323
+commitRoot @ react-dom-client.development.js:17955
+commitRootWhenReady @ react-dom-client.development.js:16824
+performWorkOnRoot @ react-dom-client.development.js:16722
+performSyncWorkOnRoot @ react-dom-client.development.js:18972
+flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
+processRootScheduleInMicrotask @ react-dom-client.development.js:18853
+(匿名) @ react-dom-client.development.js:18991
+<ForwardRef(VditorEditor2)>
+exports.jsxDEV @ react-jsx-dev-runtime.development.js:335
+MarkdownOverlayView @ MarkdownOverlayView.tsx:224
+react_stack_bottom_frame @ react-dom-client.development.js:25904
+renderWithHooksAgain @ react-dom-client.development.js:7762
+renderWithHooks @ react-dom-client.development.js:7674
+updateFunctionComponent @ react-dom-client.development.js:10166
+beginWork @ react-dom-client.development.js:11778
+runWithFiberInDEV @ react-dom-client.development.js:871
+performUnitOfWork @ react-dom-client.development.js:17641
+workLoopSync @ react-dom-client.development.js:17469
+renderRootSync @ react-dom-client.development.js:17450
+performWorkOnRoot @ react-dom-client.development.js:16504
+performSyncWorkOnRoot @ react-dom-client.development.js:18972
+flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
+processRootScheduleInMicrotask @ react-dom-client.development.js:18853
+(匿名) @ react-dom-client.development.js:18991
+MarkdownOverlayView.tsx:224  An error occurred in the <ForwardRef(VditorEditor2)> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+defaultOnUncaughtError @ react-dom-client.development.js:9362
+logUncaughtError @ react-dom-client.development.js:9431
+runWithFiberInDEV @ react-dom-client.development.js:871
+lane.callback @ react-dom-client.development.js:9461
+callCallback @ react-dom-client.development.js:7423
+commitCallbacks @ react-dom-client.development.js:7443
+runWithFiberInDEV @ react-dom-client.development.js:874
+commitLayoutEffectOnFiber @ react-dom-client.development.js:14047
+flushLayoutEffects @ react-dom-client.development.js:18138
+commitRoot @ react-dom-client.development.js:17954
+commitRootWhenReady @ react-dom-client.development.js:16824
+performWorkOnRoot @ react-dom-client.development.js:16722
+performSyncWorkOnRoot @ react-dom-client.development.js:18972
+flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
+processRootScheduleInMicrotask @ react-dom-client.development.js:18853
+(匿名) @ react-dom-client.development.js:18991
+<ForwardRef(VditorEditor2)>
+exports.jsxDEV @ react-jsx-dev-runtime.development.js:335
+MarkdownOverlayView @ MarkdownOverlayView.tsx:224
+react_stack_bottom_frame @ react-dom-client.development.js:25904
+renderWithHooksAgain @ react-dom-client.development.js:7762
+renderWithHooks @ react-dom-client.development.js:7674
+updateFunctionComponent @ react-dom-client.development.js:10166
+beginWork @ react-dom-client.development.js:11778
+runWithFiberInDEV @ react-dom-client.development.js:871
+performUnitOfWork @ react-dom-client.development.js:17641
+workLoopSync @ react-dom-client.development.js:17469
+renderRootSync @ react-dom-client.development.js:17450
+performWorkOnRoot @ react-dom-client.development.js:16504
+performSyncWorkOnRoot @ react-dom-client.development.js:18972
+flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
+processRootScheduleInMicrotask @ react-dom-client.development.js:18853
+(匿名) @ react-dom-client.development.js:18991
+index.js:15808  Uncaught TypeError: Cannot read properties of undefined (reading 'element')
+    at Vditor2.destroy (index.js:15808:21)
+    at VditorEditor.tsx:99:27
+    at Object.react_stack_bottom_frame (react-dom-client.development.js:26001:13)
+    at runWithFiberInDEV (react-dom-client.development.js:871:30)
+    at commitHookEffectListUnmount (react-dom-client.development.js:13316:17)
+    at commitHookPassiveUnmountEffects (react-dom-client.development.js:13347:11)
+    at commitPassiveUnmountEffectsInsideOfDeletedTree_begin (react-dom-client.development.js:16264:13)
+    at recursivelyTraversePassiveUnmountEffects (react-dom-client.development.js:16085:13)
+    at commitPassiveUnmountOnFiber (react-dom-client.development.js:16127:11)
+    at flushPassiveEffects (react-dom-client.development.js:18428:9)
+Vditor2.destroy @ index.js:15808
+(匿名) @ VditorEditor.tsx:99
+react_stack_bottom_frame @ react-dom-client.development.js:26001
+runWithFiberInDEV @ react-dom-client.development.js:871
+commitHookEffectListUnmount @ react-dom-client.development.js:13316
+commitHookPassiveUnmountEffects @ react-dom-client.development.js:13347
+commitPassiveUnmountEffectsInsideOfDeletedTree_begin @ react-dom-client.development.js:16264
+recursivelyTraversePassiveUnmountEffects @ react-dom-client.development.js:16085
+commitPassiveUnmountOnFiber @ react-dom-client.development.js:16127
+flushPassiveEffects @ react-dom-client.development.js:18428
+flushPendingEffects @ react-dom-client.development.js:18358
+flushSpawnedWork @ react-dom-client.development.js:18323
+commitRoot @ react-dom-client.development.js:17955
+commitRootWhenReady @ react-dom-client.development.js:16824
+performWorkOnRoot @ react-dom-client.development.js:16722
+performSyncWorkOnRoot @ react-dom-client.development.js:18972
+flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
+processRootScheduleInMicrotask @ react-dom-client.development.js:18853
+(匿名) @ react-dom-client.development.js:18991
+<ForwardRef(VditorEditor2)>
+exports.jsxDEV @ react-jsx-dev-runtime.development.js:335
+MarkdownOverlayView @ MarkdownOverlayView.tsx:224
+react_stack_bottom_frame @ react-dom-client.development.js:25904
+renderWithHooksAgain @ react-dom-client.development.js:7762
+renderWithHooks @ react-dom-client.development.js:7674
+updateFunctionComponent @ react-dom-client.development.js:10166
+beginWork @ react-dom-client.development.js:11778
+runWithFiberInDEV @ react-dom-client.development.js:871
+performUnitOfWork @ react-dom-client.development.js:17641
+workLoopSync @ react-dom-client.development.js:17469
+renderRootSync @ react-dom-client.development.js:17450
+performWorkOnRoot @ react-dom-client.development.js:16504
+performSyncWorkOnRoot @ react-dom-client.development.js:18972
+flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
+processRootScheduleInMicrotask @ react-dom-client.development.js:18853
+(匿名) @ react-dom-client.development.js:18991
+MarkdownOverlayView.tsx:224  An error occurred in the <ForwardRef(VditorEditor2)> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+defaultOnUncaughtError @ react-dom-client.development.js:9362
+logUncaughtError @ react-dom-client.development.js:9431
+runWithFiberInDEV @ react-dom-client.development.js:871
+lane.callback @ react-dom-client.development.js:9461
+callCallback @ react-dom-client.development.js:7423
+commitCallbacks @ react-dom-client.development.js:7443
+runWithFiberInDEV @ react-dom-client.development.js:874
+commitLayoutEffectOnFiber @ react-dom-client.development.js:14047
+flushLayoutEffects @ react-dom-client.development.js:18138
+commitRoot @ react-dom-client.development.js:17954
+commitRootWhenReady @ react-dom-client.development.js:16824
+performWorkOnRoot @ react-dom-client.development.js:16722
+performSyncWorkOnRoot @ react-dom-client.development.js:18972
+flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
+processRootScheduleInMicrotask @ react-dom-client.development.js:18853
+(匿名) @ react-dom-client.development.js:18991
+<ForwardRef(VditorEditor2)>
+exports.jsxDEV @ react-jsx-dev-runtime.development.js:335
+MarkdownOverlayView @ MarkdownOverlayView.tsx:224
+react_stack_bottom_frame @ react-dom-client.development.js:25904
+renderWithHooksAgain @ react-dom-client.development.js:7762
+renderWithHooks @ react-dom-client.development.js:7674
+updateFunctionComponent @ react-dom-client.development.js:10166
+beginWork @ react-dom-client.development.js:11778
+runWithFiberInDEV @ react-dom-client.development.js:871
+performUnitOfWork @ react-dom-client.development.js:17641
+workLoopSync @ react-dom-client.development.js:17469
+renderRootSync @ react-dom-client.development.js:17450
+performWorkOnRoot @ react-dom-client.development.js:16504
+performSyncWorkOnRoot @ react-dom-client.development.js:18972
+flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
+processRootScheduleInMicrotask @ react-dom-client.development.js:18853
+(匿名) @ react-dom-client.development.js:18991

@@ -122,6 +122,46 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
       console.warn('Vditor getValue failed:', e);
     }
   }, [activeTabId, content]);
+
+  // Update mode when config changes
+  useEffect(() => {
+    const vditor = vditorRef.current;
+    if (!isVditorReady.current || !vditor) return;
+    
+    try {
+      const vditorMode = toVditorMode(config.mode);
+      // Recreate editor with new mode
+      vditor.destroy();
+      vditorRef.current = new Vditor('vditor', {
+        value: content,
+        mode: vditorMode,
+        theme: config.theme === 'dark' ? 'dark' : 'classic',
+        height: '100%',
+        input: (value: string) => {
+          setContent(value);
+        },
+        toolbar: [
+          'headings', 'bold', 'italic', 'strike', '|', 'line', 'quote', 'list', 'ordered-list', 'check', '|',
+          'code', 'inline-code', 'link', 'table', '|', 'undo', 'redo', '|', 'preview', 'edit', 'wysiwym', '|', 'fullscreen',
+        ],
+      });
+      isVditorReady.current = true;
+    } catch (e) {
+      console.warn('Vditor mode change failed:', e);
+    }
+  }, [config.mode, config.theme, content, setContent]);
+
+  // Update theme
+  useEffect(() => {
+    const vditor = vditorRef.current;
+    if (!isVditorReady.current || !vditor) return;
+    
+    try {
+      vditor.setTheme(config.theme === 'dark' ? 'dark' : 'classic');
+    } catch (e) {
+      console.warn('Vditor theme change failed:', e);
+    }
+  }, [config.theme]);
   
   // Expose methods for external control via ref
   useImperativeHandle(ref, () => ({
