@@ -8,8 +8,6 @@ import {
   Moon,
   Edit3,
   Eye,
-  ZoomIn,
-  ZoomOut,
   Maximize2,
   FileText,
   Heading1,
@@ -38,7 +36,6 @@ export function MarkdownToolbar({ className = '', onInsertValue }: MarkdownToolb
     activeTabId,
     setMode, 
     setTheme, 
-    setFontSize,
     addTab,
     updateTab,
     getActiveTab,
@@ -108,14 +105,6 @@ export function MarkdownToolbar({ className = '', onInsertValue }: MarkdownToolb
   const handleThemeToggle = useCallback(() => {
     setTheme(config.theme === 'dark' ? 'light' : 'dark');
   }, [config.theme, setTheme]);
-  
-  const handleZoomIn = useCallback(() => {
-    setFontSize(Math.min(config.fontSize + 2, 24));
-  }, [config.fontSize, setFontSize]);
-  
-  const handleZoomOut = useCallback(() => {
-    setFontSize(Math.max(config.fontSize - 2, 10));
-  }, [config.fontSize, setFontSize]);
   
   const handleFullscreen = useCallback(async () => {
     try {
@@ -255,23 +244,7 @@ export function MarkdownToolbar({ className = '', onInsertValue }: MarkdownToolb
         onClick={handleThemeToggle}
       />
       
-      <ToolbarDivider />
-      
-      {/* Zoom */}
-      <ToolbarButton 
-        icon={<ZoomOut size={16} />} 
-        tooltip="Zoom Out"
-        onClick={handleZoomOut}
-      />
-      <span className="text-xs text-gray-500 dark:text-gray-400 min-w-[40px] text-center">
-        {config.fontSize}px
-      </span>
-      <ToolbarButton 
-        icon={<ZoomIn size={16} />} 
-        tooltip="Zoom In"
-        onClick={handleZoomIn}
-      />
-      
+
       <div className="flex-1" />
       
       {/* Fullscreen */}
