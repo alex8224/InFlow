@@ -26,6 +26,16 @@ export interface MarkdownEditorConfig {
   activeTabId: string | null;
 }
 
+export type MarkdownLoadingStage = 'reading' | 'rendering';
+
+export interface MarkdownLoadingInfo {
+  path: string;
+  sizeBytes: number | null;
+  stage: MarkdownLoadingStage;
+}
+
+const LARGE_DOC_CHAR_THRESHOLD = 200_000;
+
 type MarkdownStore = {
   // Editor config
   config: MarkdownEditorConfig;
@@ -36,6 +46,7 @@ type MarkdownStore = {
   
   // UI state
   isLoading: boolean;
+  loadingInfo: MarkdownLoadingInfo | null;
   error: string | null;
   
   // Actions - Config
@@ -62,6 +73,7 @@ type MarkdownStore = {
   
   // Actions - State
   setLoading: (loading: boolean) => void;
+  setLoadingInfo: (info: MarkdownLoadingInfo | null) => void;
   setError: (error: string | null) => void;
 };
 
@@ -83,6 +95,7 @@ export const useMarkdownStore = create<MarkdownStore>((set, get) => ({
   tabs: [],
   activeTabId: null,
   isLoading: false,
+  loadingInfo: null,
   error: null,
   
   // Config actions
@@ -190,21 +203,82 @@ export const useMarkdownStore = create<MarkdownStore>((set, get) => ({
   
   // File operations
   loadFile: async (filePath, content) => {
-    // If content is empty, auto-read from file
-    let fileContent = content;
-    if (!fileContent && filePath) {
-      try {
-        const { readMarkdownFile } = await import('../integrations/tauri/api');
-        fileContent = await readMarkdownFile(filePath);
-      } catch (err) {
-        console.error('Failed to read file:', err);
-        fileContent = '';
+    const trimmedPath = (filePath || '').trim();
+    if (!trimmedPath) {
+      set({ error: 'Invalid file path.' });
+      return;
+    }
+
+    // If the file is already open and caller didn't provide new content, just focus the tab.
+    // This avoids re-reading and re-rendering large files.
+    if (!content) {
+      const state0 = get();
+      const existing = state0.tabs.find((t) => t.filePath === trimmedPath);
+      if (existing) {
+        set({
+          activeTabId: existing.id,
+          config: { ...state0.config, activeTabId: existing.id },
+          isLoading: false,
+          loadingInfo: null,
+          error: null,
+        });
+        return;
       }
+    }
+
+    // Update loading state early so the UI can paint a waiting indicator.
+    set({
+      isLoading: true,
+      loadingInfo: { path: trimmedPath, sizeBytes: null, stage: 'reading' },
+      error: null,
+    });
+    // Yield to allow React to render the loading overlay before heavy work.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    let fileContent = content;
+    try {
+      const { readMarkdownFile, getFileSize } = await import('../integrations/tauri/api');
+
+      // Best-effort file size for UX.
+      try {
+        const sizeBytes = await getFileSize(trimmedPath);
+        set((state) => ({
+          ...state,
+          loadingInfo:
+            state.loadingInfo?.path === trimmedPath
+              ? { ...state.loadingInfo, sizeBytes }
+              : state.loadingInfo,
+        }));
+      } catch {
+        // ignore
+      }
+
+      if (!fileContent) {
+        fileContent = await readMarkdownFile(trimmedPath);
+      }
+    } catch (err) {
+      console.error('Failed to read file:', err);
+      fileContent = fileContent || '';
+      set({ error: 'Failed to read file.' });
+    }
+
+    const isLarge = fileContent.length > LARGE_DOC_CHAR_THRESHOLD;
+
+    // Mark that we're about to render/apply content.
+    set((state) => ({
+      ...state,
+      loadingInfo:
+        state.loadingInfo?.path === trimmedPath
+          ? { ...state.loadingInfo, stage: 'rendering' }
+          : state.loadingInfo,
+    }));
+    if (isLarge) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
     
     set((state) => {
       // Check if file is already open
-      const existingTab = state.tabs.find((t) => t.filePath === filePath);
+      const existingTab = state.tabs.find((t) => t.filePath === trimmedPath);
       if (existingTab) {
         return {
           activeTabId: existingTab.id,
@@ -213,7 +287,7 @@ export const useMarkdownStore = create<MarkdownStore>((set, get) => ({
       }
 
       // Extract filename from path
-      const title = filePath.split(/[/\\]/).pop() || 'Untitled';
+      const title = trimmedPath.split(/[/\\]/).pop() || 'Untitled';
       const id = generateId();
 
       return {
@@ -222,7 +296,7 @@ export const useMarkdownStore = create<MarkdownStore>((set, get) => ({
           {
             id,
             title,
-            filePath,
+            filePath: trimmedPath,
             content: fileContent,
             isDirty: false,
             cursorPosition: { line: 1, col: 1 },
@@ -233,12 +307,19 @@ export const useMarkdownStore = create<MarkdownStore>((set, get) => ({
           ...state.config,
           activeTabId: id,
           recentFiles: [
-            filePath,
-            ...state.config.recentFiles.filter((f) => f !== filePath),
+            trimmedPath,
+            ...state.config.recentFiles.filter((f) => f !== trimmedPath),
           ].slice(0, 10),
         },
       };
     });
+
+    // For small/medium documents, we can clear loading immediately.
+    // For large documents, Vditor applies content asynchronously (deferred) and will
+    // clear loading once the editor is ready.
+    if (!isLarge) {
+      set({ isLoading: false, loadingInfo: null });
+    }
   },
    
   markSaved: (tabId) => set((state) => ({
@@ -249,5 +330,6 @@ export const useMarkdownStore = create<MarkdownStore>((set, get) => ({
   
   // State actions
   setLoading: (isLoading) => set({ isLoading }),
+  setLoadingInfo: (loadingInfo) => set({ loadingInfo }),
   setError: (error) => set({ error }),
 }));

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
+import { useEffect, useMemo, useRef, useImperativeHandle, forwardRef } from 'react';
 import Vditor from 'vditor';
 import 'vditor/dist/index.css';
 import { useMarkdownStore } from '../../stores/markdownStore';
@@ -21,16 +21,25 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
   const vditorRef = useRef<Vditor | null>(null);
   const isVditorReady = useRef(false);
   const lastEditorValueRef = useRef<string>('');
+  const currentModeRef = useRef<'ir' | 'sv'>('ir');
+  const currentLargeRef = useRef(false);
+
+  // Large markdown optimization: Vditor's IR/WYSIWYG modes maintain a large editable DOM,
+  // which becomes very slow for big documents. We downgrade to `sv` (source mode) and
+  // disable the heaviest preview features when the document is large.
+  const LARGE_DOC_CHAR_THRESHOLD = 200_000;
   
-  const { 
-    tabs, 
-    activeTabId, 
-    config,
-    setContent,
-  } = useMarkdownStore();
-  
-  const activeTab = tabs.find(t => t.id === activeTabId);
-  const content = activeTab?.content || '';
+  const activeTabId = useMarkdownStore((state) => state.activeTabId);
+  const theme = useMarkdownStore((state) => state.config.theme);
+  const setContent = useMarkdownStore((state) => state.setContent);
+
+  const activeContent = useMemo(() => {
+    const state = useMarkdownStore.getState();
+    const tab = state.tabs.find((t) => t.id === state.activeTabId);
+    return tab?.content || '';
+  }, [activeTabId]);
+
+  const isLargeDoc = activeContent.length > LARGE_DOC_CHAR_THRESHOLD;
 
   const getVditorValueSafe = (): string => {
     const v = vditorRef.current;
@@ -65,75 +74,146 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
     }
   };
   
-  // Initialize Vditor
-  useEffect(() => {
-    if (!containerRef.current) return;
-    
-    const vditor = new Vditor('vditor', {
-      value: content,
-      mode: 'ir',
-      theme: config.theme === 'dark' ? 'dark' : 'classic',
+  const destroyVditor = () => {
+    try {
+      if (vditorRef.current) {
+        vditorRef.current.destroy();
+      }
+    } catch (e) {
+      console.warn('Vditor destroy failed:', e);
+    }
+    vditorRef.current = null;
+    isVditorReady.current = false;
+  };
+
+  const createVditor = (value: string, mode: 'ir' | 'sv', largeDoc: boolean) => {
+    const host = containerRef.current;
+    if (!host) return;
+
+    // Vditor accepts either an element id or the element itself.
+    const vditor = new Vditor(host, {
+      value,
+      mode,
+      theme: theme === 'dark' ? 'dark' : 'classic',
       height: '100%',
       // @ts-expect-error - bottom is a valid Vditor option not in types
       bottom: 32,
       placeholder: 'Start typing markdown...',
-      input: (value: string) => {
-        lastEditorValueRef.current = value;
-        setContent(value);
-      },
       toolbar: [],
       outline: { enable: false, position: 'right' },
-      preview: {
-        mode: 'editor',
-        parse: (element: HTMLElement) => {
-          const anyVditor = Vditor as any;
-          const fn = anyVditor?.mermaidRender;
-          if (typeof fn !== 'function') return;
-          try {
-            fn(element, undefined, config.theme === 'dark' ? 'dark' : 'classic');
-          } catch {
-            // ignore
-          }
-        },
-        markdown: {
-          toc: true,
-        }
+      // Avoid localStorage cache: it can restore stale content and adds overhead.
+      cache: { enable: false },
+      input: (nextValue: string) => {
+        lastEditorValueRef.current = nextValue;
+        setContent(nextValue);
       },
+      preview: largeDoc
+        ? {
+            // Keep the editor responsive.
+            mode: 'editor',
+            delay: 2500,
+            hljs: { enable: false },
+            render: { media: { enable: false } },
+            markdown: {
+              toc: false,
+              codeBlockPreview: false,
+              mathBlockPreview: false,
+            },
+          }
+        : {
+            mode: 'editor',
+            // Mermaid rendering can be heavy; keep it only for small docs.
+            parse: (element: HTMLElement) => {
+              const anyVditor = Vditor as any;
+              const fn = anyVditor?.mermaidRender;
+              if (typeof fn !== 'function') return;
+              try {
+                fn(element, undefined, theme === 'dark' ? 'dark' : 'classic');
+              } catch {
+                // ignore
+              }
+            },
+            markdown: {
+              toc: true,
+            },
+          },
     });
-    
+
     vditorRef.current = vditor;
     isVditorReady.current = true;
-    lastEditorValueRef.current = content;
-    
-    return () => {
-      try {
-        if (vditorRef.current) {
-          vditorRef.current.destroy();
+    lastEditorValueRef.current = value;
+    currentModeRef.current = mode;
+    currentLargeRef.current = largeDoc;
+  };
+
+  // (Re)create Vditor when switching between small/large docs.
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const desiredMode: 'ir' | 'sv' = isLargeDoc ? 'sv' : 'ir';
+    const needsRecreate =
+      !vditorRef.current ||
+      !isVditorReady.current ||
+      desiredMode !== currentModeRef.current ||
+      isLargeDoc !== currentLargeRef.current;
+
+    if (needsRecreate) {
+      destroyVditor();
+      const initialValue = isLargeDoc ? '' : activeContent;
+      createVditor(initialValue, desiredMode, isLargeDoc);
+
+      // Applying a very large document can block the UI thread. Defer it so the
+      // loading overlay can paint first.
+      if (isLargeDoc && activeContent) {
+        const state = useMarkdownStore.getState();
+        if (!state.isLoading) {
+          state.setLoading(true);
         }
-      } catch (e) {
-        console.warn('Vditor destroy failed:', e);
+        if (state.loadingInfo?.stage !== 'rendering') {
+          // Preserve any sizeBytes already collected.
+          const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
+          const path = activeTab?.filePath || state.loadingInfo?.path || 'large document';
+          state.setLoadingInfo({
+            path,
+            sizeBytes: state.loadingInfo?.sizeBytes ?? null,
+            stage: 'rendering',
+          });
+        }
+
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            try {
+              vditorRef.current?.setValue(activeContent);
+              lastEditorValueRef.current = activeContent;
+            } catch (e) {
+              console.warn('Vditor setValue failed:', e);
+            }
+            const s = useMarkdownStore.getState();
+            s.setLoading(false);
+            s.setLoadingInfo(null);
+          }, 0);
+        });
       }
-      vditorRef.current = null;
-      isVditorReady.current = false;
+      return;
+    }
+
+    // When only the tab changes, push the new content once.
+    try {
+      if (activeContent !== lastEditorValueRef.current) {
+        vditorRef.current?.setValue(activeContent);
+        lastEditorValueRef.current = activeContent;
+      }
+    } catch (e) {
+      console.warn('Vditor setValue failed:', e);
+    }
+  }, [activeTabId, isLargeDoc]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      destroyVditor();
     };
   }, []);
-  
-  // Update content when tab changes
-  useEffect(() => {
-    const vditor = vditorRef.current;
-    if (!isVditorReady.current || !vditor) return;
-    
-    try {
-      // Avoid calling getValue() here: after a hot-reload or destroy it may throw.
-      // Track the last value emitted by the editor and only push content when it
-      // differs (e.g. tab/file load).
-      if (content === lastEditorValueRef.current) return;
-      vditor.setValue(content);
-      lastEditorValueRef.current = content;
-    } catch (e) {
-      console.warn('Vditor getValue failed:', e);
-    }
-  }, [activeTabId, content]);
   
   // Update theme
   useEffect(() => {
@@ -141,12 +221,14 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
     if (!isVditorReady.current || !vditor) return;
     
     try {
-      vditor.setTheme(config.theme === 'dark' ? 'dark' : 'classic');
-      renderMermaidInPreview(config.theme);
+      vditor.setTheme(theme === 'dark' ? 'dark' : 'classic');
+      if (!currentLargeRef.current) {
+        renderMermaidInPreview(theme);
+      }
     } catch (e) {
       console.warn('Vditor theme change failed:', e);
     }
-  }, [config.theme]);
+  }, [theme]);
   
   // Expose methods for external control via ref
   useImperativeHandle(ref, () => ({
@@ -181,7 +263,6 @@ export const VditorEditor = forwardRef<VditorEditorRef, VditorEditorProps>(funct
   
   return (
     <div 
-      id="vditor" 
       ref={containerRef}
       className={className}
       style={{ height: '100%', minHeight: 0 }}

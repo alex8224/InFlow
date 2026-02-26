@@ -169,6 +169,7 @@ pub fn run() {
             markdown::save_markdown_file,
             markdown::save_markdown_file_as,
             markdown::read_markdown_file,
+            markdown::get_file_size,
             markdown::toggle_overlay_fullscreen,
         ])
         .run(tauri::generate_context!())

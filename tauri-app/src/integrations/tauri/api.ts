@@ -197,6 +197,10 @@ export async function readMarkdownFile(path: string): Promise<string> {
   return await invoke('read_markdown_file', { path });
 }
 
+export async function getFileSize(path: string): Promise<number> {
+  return await invoke('get_file_size', { path });
+}
+
 export async function translateText(
   text: string,
   fromLang: string,

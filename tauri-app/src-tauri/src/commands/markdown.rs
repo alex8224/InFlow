@@ -1,6 +1,4 @@
 use std::fs;
-use std::path::PathBuf;
-use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
 #[tauri::command]
@@ -69,14 +67,39 @@ pub async fn save_markdown_file(path: String, content: String) -> Result<(), Str
 
 #[tauri::command]
 pub async fn read_markdown_file(path: String) -> Result<String, String> {
-    fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))
+    let path_clone = path.clone();
+    tokio::task::spawn_blocking(move || fs::read_to_string(&path_clone))
+        .await
+        .map_err(|e| format!("Task failed: {}", e))?
+        .map_err(|e| format!("Failed to read file: {}", e))
 }
 
 #[tauri::command]
-pub fn toggle_overlay_fullscreen(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(overlay) = app.get_webview_window("overlay") {
-        let is_fullscreen = overlay.is_fullscreen().unwrap_or(false);
-        overlay.set_fullscreen(!is_fullscreen).map_err(|e| e.to_string())?;
+pub fn get_file_size(path: String) -> Result<u64, String> {
+    let meta = fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
+    Ok(meta.len())
+}
+
+#[tauri::command]
+pub fn toggle_overlay_fullscreen(window: tauri::WebviewWindow) -> Result<(), String> {
+    // Despite the legacy name, toggle for the *calling* window.
+    // NOTE: On Windows, `set_fullscreen` may be a no-op for frameless/transparent windows.
+    // For UX, treat this as a "fill screen" toggle: prefer maximize, but also allow
+    // exiting true fullscreen if it is currently enabled.
+
+    // If we're in true fullscreen, always exit fullscreen first.
+    let is_fullscreen = window.is_fullscreen().map_err(|e| e.to_string())?;
+    if is_fullscreen {
+        window.set_fullscreen(false).map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    // Otherwise toggle maximized state.
+    let is_maximized = window.is_maximized().map_err(|e| e.to_string())?;
+    if is_maximized {
+        window.unmaximize().map_err(|e| e.to_string())?;
+    } else {
+        window.maximize().map_err(|e| e.to_string())?;
     }
     Ok(())
 }
